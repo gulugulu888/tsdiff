@@ -1,21 +1,27 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: Apache-2.0
-from copy import deepcopy
+# src/uncond_ts_diff/model/callback.py
+import copy 
 import math
 from pathlib import Path
+import logging 
+from typing import List, Dict, Any, Optional # <--- 确保这些被导入
 
 import numpy as np
 import torch
+import pytorch_lightning as pl 
+from pytorch_lightning import Callback 
 
 from gluonts.dataset.field_names import FieldName
 from gluonts.evaluation import make_evaluation_predictions, Evaluator
+# InstanceSplitter 自身不需要在这里导入，因为它被 create_splitter 内部使用
+# from gluonts.transform import TestSplitSampler, InstanceSplitter 
+from gluonts.dataset.common import ListDataset 
+from gluonts.transform import Chain # <--- 确保 Chain 被导入
 
-from gluonts.transform import TestSplitSampler, InstanceSplitter
-from pytorch_lightning import Callback
-
+# Assuming these are correctly located relative to this file or in PYTHONPATH
 from uncond_ts_diff.sampler import DDPMGuidance, DDIMGuidance
-from uncond_ts_diff.metrics import linear_pred_score
-from uncond_ts_diff.utils import ConcatDataset
+from uncond_ts_diff.utils import create_splitter 
+
+logger = logging.getLogger(__name__)
 
 
 class GradNormCallback(Callback):
@@ -24,260 +30,298 @@ class GradNormCallback(Callback):
 
     def on_before_optimizer_step(
         self,
-        trainer,
-        pl_module,
-        optimizer,
+        trainer: "pl.Trainer", 
+        pl_module: "pl.LightningModule",
+        optimizer, 
         opt_idx: int,
     ) -> None:
-        return pl_module.log(
-            "grad_norm", self.grad_norm(pl_module.parameters()), prog_bar=True
-        )
+        if hasattr(pl_module, 'log') and callable(pl_module.log):
+            pl_module.log(
+                "grad_norm", self.grad_norm(pl_module.parameters()), prog_bar=True, logger=True
+            )
+        else:
+            current_grad_norm = self.grad_norm(pl_module.parameters())
+            if hasattr(trainer, 'logger') and hasattr(trainer.logger, 'log_metrics'):
+                 trainer.logger.log_metrics({"grad_norm_manual": current_grad_norm.item()}, step=trainer.global_step)
 
     def grad_norm(self, parameters):
         parameters = [p for p in parameters if p.grad is not None]
+        if not parameters: 
+            return torch.tensor(0.0)
         device = parameters[0].grad.device
         total_norm = torch.norm(
             torch.stack(
-                [torch.norm(p.grad.detach(), 2).to(device) for p in parameters]
+                [torch.norm(p.grad.detach(), p=2).to(device) for p in parameters] 
             ),
-            2,
+            p=2, 
         )
         return total_norm
 
 
-class PredictiveScoreCallback(Callback):
+class PredictiveScoreCallback(Callback): 
     def __init__(
         self,
-        context_length,
-        prediction_length,
-        model,
-        transformation,
-        train_dataloader,
-        train_batch_size,
-        test_dataset,
-        eval_every=10,
+        context_length: int,
+        prediction_length: int,
+        model: pl.LightningModule, # Type hint for PL module
+        transformation: Chain, # Type hint for GluonTS Chain
+        train_dataloader, 
+        train_batch_size: int,
+        test_dataset: Any, # Can be any GluonTS dataset
+        eval_every: int =10,
     ):
         super().__init__()
         self.context_length = context_length
         self.prediction_length = prediction_length
-        self.model = model
+        self.model_lightning_module = model 
         self.transformation = transformation
         self.train_dataloader = train_dataloader
         self.train_batch_size = train_batch_size
-        self.test_dataset = test_dataset
+        self.test_dataset_gluonts = test_dataset 
         self.eval_every = eval_every
-        # Number of samples used to train the downstream predictor
-        self.n_pred_samples = 10000
+        self.n_pred_samples = 10000 
 
     def _generate_real_samples(
-        self,
-        data_loader,
-        num_samples: int,
-        n_timesteps: int,
-        batch_size: int,
-        cache_path: Path,
+        self, data_loader, num_samples: int, n_timesteps: int,
+        batch_size: int, cache_path: Path,
     ):
         if cache_path.exists():
-            real_samples = np.load(cache_path)
-            if len(real_samples) == num_samples:
-                return real_samples
-
-        real_samples = []
-        data_iter = iter(data_loader)
-        n_iters = math.ceil(num_samples / batch_size)
-        for i in range(n_iters):
             try:
-                batch = next(data_iter)
-            except StopIteration:
-                data_iter = iter(data_loader)
-                batch = next(data_iter)
-            ts = np.concatenate(
-                [batch["past_target"], batch["future_target"]], axis=-1
-            )[:, -n_timesteps:]
-            real_samples.append(ts)
+                real_samples = np.load(cache_path)
+                if len(real_samples) >= num_samples:
+                    return real_samples[:num_samples]
+            except Exception as e:
+                logger.warning(f"Could not load cached real samples from {cache_path}: {e}")
+        real_samples_list = []
+        num_collected = 0
+        iters_since_last_batch = 0 # To prevent infinite loop if dataloader is exhausted early
+        max_iters_no_batch = 5 # Arbitrary limit
 
-        real_samples = np.concatenate(real_samples, axis=0)[:num_samples]
-        np.save(cache_path, real_samples)
+        while num_collected < num_samples:
+            batch_found_in_epoch = False
+            for batch in data_loader: 
+                batch_found_in_epoch = True
+                iters_since_last_batch = 0
+                past_target_np = batch["past_target"].cpu().numpy()
+                future_target_np = batch["future_target"].cpu().numpy()
+                
+                # Determine axis for concatenation and slicing based on typical shapes
+                # Common shape from GluonTS: (batch_size, sequence_length, num_features_or_1)
+                # Or (batch_size, sequence_length) if already squeezed
+                ts_concat_axis = -2 # Assumes time is the second to last dimension
+                if past_target_np.ndim == 2: # (batch_size, sequence_length)
+                    ts_concat_axis = -1
 
-        return real_samples
+                ts = np.concatenate([past_target_np, future_target_np], axis=ts_concat_axis) 
+                
+                if ts.ndim == 3 and ts.shape[-1] == 1: 
+                    ts = ts[..., 0] 
+                
+                current_batch_samples = ts[:, -n_timesteps:]
+                real_samples_list.append(current_batch_samples)
+                num_collected += current_batch_samples.shape[0]
+                if num_collected >= num_samples: break
+            
+            if not batch_found_in_epoch: # Dataloader might be exhausted
+                iters_since_last_batch +=1
+                if iters_since_last_batch > max_iters_no_batch:
+                    logger.warning("PredictiveScoreCallback: Train Dataloader exhausted before collecting enough real samples.")
+                    break
+            if num_collected >= num_samples: break # Break outer loop too
+        
+        if not real_samples_list:
+            logger.error("PredictiveScoreCallback: No real samples could be generated.")
+            return np.array([])
+        real_samples_arr = np.concatenate(real_samples_list, axis=0)[:num_samples]
+        try: np.save(cache_path, real_samples_arr)
+        except Exception as e: logger.warning(f"Could not save real samples to cache {cache_path}: {e}")
+        return real_samples_arr
 
     def _generate_synth_samples(
-        self, model, num_samples: int, batch_size: int = 1000
+        self, model_pl_module: pl.LightningModule, num_samples: int, batch_size: int = 1000
     ):
-        synth_samples = []
+        synth_samples_list = []
+        num_generated = 0
+        while num_generated < num_samples:
+            current_batch_size = min(batch_size, num_samples - num_generated)
+            # Assuming sample_n is a method of the pl_module (TSDiff)
+            if not hasattr(model_pl_module, 'sample_n'):
+                logger.error("PredictiveScoreCallback: Model does not have a 'sample_n' method.")
+                return np.array([])
+            samples = model_pl_module.sample_n(num_samples=current_batch_size) 
+            synth_samples_list.append(samples)
+            num_generated += samples.shape[0]
+        
+        if not synth_samples_list:
+            logger.error("PredictiveScoreCallback: No synthetic samples could be generated.")
+            return np.array([])
+        return np.concatenate(synth_samples_list, axis=0)[:num_samples]
 
-        n_iters = math.ceil(num_samples / batch_size)
-        for _ in range(n_iters):
-            samples = model.sample_n(num_samples=batch_size)
-            synth_samples.append(samples)
-
-        synth_samples = np.concatenate(synth_samples, axis=0)[:num_samples]
-        return synth_samples
-
-    def on_train_epoch_end(self, trainer, pl_module):
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         if (pl_module.current_epoch + 1) % self.eval_every == 0:
-            device = next(pl_module.backbone.parameters()).device
-            pl_module.eval()
-            assert pl_module.training is False
+            logger.info(f"PredictiveScoreCallback: Running at epoch {pl_module.current_epoch + 1}")
+            eval_model = pl_module 
+            original_training_state = eval_model.training
+            eval_model.eval()
 
-            real_samples = self._generate_real_samples(
-                self.train_dataloader,
-                self.n_pred_samples,
-                self.context_length + self.prediction_length,
-                self.train_batch_size,
-                cache_path=Path(trainer.logger.log_dir) / "real_samples.npy",
-            )
-            synth_samples = self._generate_synth_samples(
-                self.model,
-                self.n_pred_samples,
-            )
+            synth_samples_scaled = self._generate_synth_samples(eval_model, self.n_pred_samples)
+            
+            if synth_samples_scaled.size == 0:
+                logger.error("PredictiveScoreCallback: Synthetic sample generation failed. Skipping LPS calculation.")
+                if original_training_state: eval_model.train()
+                return
 
-            # Train using synthetic samples, test on test set
-            synth_metrics, _, _ = linear_pred_score(
-                synth_samples,
-                self.context_length,
-                self.prediction_length,
-                self.test_dataset,
-                scaling_type="mean",
-            )
-
-            # Train using real samples, test on test set
-            scaled_real_samples, _ = self.model.scaler(
-                torch.from_numpy(real_samples).to(device),
-                torch.from_numpy(np.ones_like(real_samples)).to(device),
-            )
-            real_metrics, _, _ = linear_pred_score(
-                scaled_real_samples.cpu().numpy(),
-                self.context_length,
-                self.prediction_length,
-                self.test_dataset,
-                scaling_type="mean",
-            )
-
-            pl_module.log_dict(
-                {
-                    "synth_linear_ND": synth_metrics["ND"],
-                    "synth_linear_NRMSE": synth_metrics["NRMSE"],
-                    "real_linear_ND": real_metrics["ND"],
-                    "real_linear_NRMSE": real_metrics["NRMSE"],
-                }
-            )
-
-            pl_module.train()
+            from uncond_ts_diff.metrics import linear_pred_score 
+            
+            logger.info("PredictiveScoreCallback: Calculating LPS for synthetic data...")
+            try:
+                # Ensure model has 'normalization' attribute or get it from hparams
+                scaling_type = getattr(eval_model, 'normalization', eval_model.hparams.get('normalization', 'none'))
+                synth_metrics, _, _ = linear_pred_score(
+                    samples=synth_samples_scaled, 
+                    context_length=self.context_length,
+                    prediction_length=self.prediction_length,
+                    test_dataset=self.test_dataset_gluonts, 
+                    scaling_type=scaling_type 
+                )
+                pl_module.log("LPS_synth_ND", synth_metrics.get("ND", float('nan')), on_epoch=True, logger=True)
+                pl_module.log("LPS_synth_NRMSE", synth_metrics.get("NRMSE", float('nan')), on_epoch=True, logger=True)
+            except Exception as e_lps:
+                logger.error(f"PredictiveScoreCallback: Error during LPS calculation: {e_lps}")
+            
+            if original_training_state: eval_model.train()
 
 
 class EvaluateCallback(Callback):
     def __init__(
         self,
-        context_length,
-        prediction_length,
-        sampler,
-        sampler_kwargs,
-        num_samples,
-        model,
-        transformation,
-        test_dataset,
-        val_dataset,
-        eval_every=50,
+        context_length: int,
+        prediction_length: int,
+        sampler: str, 
+        sampler_kwargs: dict,
+        num_samples: int,
+        model: pl.LightningModule, 
+        transformation: Chain,     
+        val_dataset: List[Dict[str, Any]], 
+        test_dataset: Any, 
+        eval_every: int = 50,
     ):
         super().__init__()
         self.context_length = context_length
         self.prediction_length = prediction_length
-        self.sampler = sampler
+        self.sampler_name = sampler
         self.num_samples = num_samples
         self.sampler_kwargs = sampler_kwargs
-        self.model = model
-        self.transformation = transformation
-        self.test_dataset = test_dataset
-        self.val_data = val_dataset
-        self.original_state_dict = {}
+        self.model_lightning_module = model 
+        self.transformation = transformation 
+        self.val_data_list = val_dataset 
+        self.test_dataset_gluonts = test_dataset 
         self.eval_every = eval_every
-        self.log_metrics = {
-            "CRPS",
-            "ND",
-            "NRMSE",
-        }
+        self.log_metrics = {"CRPS", "ND", "NRMSE", "MSE"} 
 
-        if sampler == "ddpm":
-            self.Guidance = DDPMGuidance
-        elif sampler == "ddim":
-            self.Guidance = DDIMGuidance
+        if self.sampler_name == "ddpm":
+            self.GuidanceClass = DDPMGuidance
+        elif self.sampler_name == "ddim":
+            self.GuidanceClass = DDIMGuidance
         else:
-            raise ValueError(f"Unknown sampler type: {sampler}")
+            raise ValueError(f"Unknown sampler type: {self.sampler_name}")
 
-    def on_train_epoch_end(self, trainer, pl_module):
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         if (pl_module.current_epoch + 1) % self.eval_every == 0:
-            device = next(pl_module.backbone.parameters()).device
-            self.original_state_dict = deepcopy(
-                pl_module.backbone.state_dict()
-            )
-            pl_module.eval()
-            assert pl_module.training is False
-            for label, state_dict in zip(
-                [""] + [str(rate) for rate in pl_module.ema_rate],
-                [pl_module.backbone.state_dict()] + pl_module.ema_state_dicts,
-            ):
-                pl_module.backbone.load_state_dict(state_dict, strict=True)
-                pl_module.to(device)
-                prediction_splitter = InstanceSplitter(
-                    target_field=FieldName.TARGET,
-                    is_pad_field=FieldName.IS_PAD,
-                    start_field=FieldName.START,
-                    forecast_start_field=FieldName.FORECAST_START,
-                    instance_sampler=TestSplitSampler(),
-                    past_length=self.context_length + max(self.model.lags_seq),
-                    future_length=self.prediction_length,
-                    time_series_fields=[
-                        FieldName.FEAT_TIME,
-                        FieldName.OBSERVED_VALUES,
-                    ],
+            logger.info(f"EvaluateCallback: Running evaluation at epoch {pl_module.current_epoch + 1}")
+            device = pl_module.device 
+
+            original_training_state = pl_module.training # Save current mode
+            pl_module.eval() # Set to eval mode
+
+            original_state_dict = copy.deepcopy(pl_module.backbone.state_dict())
+            
+            ema_states_to_eval = [("main_model", pl_module.backbone.state_dict())] 
+            if hasattr(pl_module, 'ema_rate') and hasattr(pl_module, 'ema_state_dicts') and \
+               pl_module.ema_rate and pl_module.ema_state_dicts:
+                logger.info("EvaluateCallback: Evaluating EMA models.")
+                ema_states_to_eval.extend(
+                    [(f"ema_{rate}", state_dict) for rate, state_dict in zip(pl_module.ema_rate, pl_module.ema_state_dicts)]
                 )
-                og = self.Guidance(
-                    self.model,
-                    self.prediction_length,
+            
+            for model_label, state_dict_to_eval in ema_states_to_eval:
+                logger.info(f"EvaluateCallback: Evaluating with {model_label} weights...")
+                pl_module.backbone.load_state_dict(state_dict_to_eval, strict=True)
+                
+                guidance_sampler_instance = self.GuidanceClass(
+                    model=pl_module, 
+                    prediction_length=self.prediction_length,
                     num_samples=self.num_samples,
                     **self.sampler_kwargs,
                 )
-                predictor_pytorch = og.get_predictor(
-                    prediction_splitter,
-                    batch_size=1024 // self.num_samples,
+
+                instance_splitter_for_eval = create_splitter( 
+                    past_length=self.context_length + max(pl_module.lags_seq if hasattr(pl_module, 'lags_seq') and pl_module.lags_seq else [0]),
+                    future_length=self.prediction_length,
+                    mode="test", 
+                )
+                
+                predictor_for_eval = guidance_sampler_instance.get_predictor(
+                    input_transform=instance_splitter_for_eval, 
+                    batch_size=max(1, 1024 // self.num_samples), 
                     device=device,
                 )
-                evaluator = Evaluator()
+                evaluator = Evaluator(quantiles=[0.1, 0.25, 0.5, 0.75, 0.9]) 
 
-                transformed_valdata = self.transformation.apply(
-                    ConcatDataset(self.val_data), is_train=False
-                )
-
-                forecast_it, ts_it = make_evaluation_predictions(
-                    dataset=transformed_valdata,
-                    predictor=predictor_pytorch,
-                    num_samples=self.num_samples,
-                )
-
-                forecasts_pytorch = list(forecast_it)
-                tss_pytorch = list(ts_it)
-
-                metrics_pytorch, per_ts = evaluator(
-                    tss_pytorch, forecasts_pytorch
-                )
-                metrics_pytorch["CRPS"] = metrics_pytorch["mean_wQuantileLoss"]
-                if metrics_pytorch["CRPS"] < pl_module.best_crps:
-                    pl_module.best_crps = metrics_pytorch["CRPS"]
-                    ckpt_path = (
-                        Path(trainer.logger.log_dir) / "best_checkpoint.ckpt"
+                if self.val_data_list:
+                    logger.info(f"  Evaluating on val_dataset ({len(self.val_data_list)} series)...")
+                    # self.val_data_list is List[Dict], self.transformation is Chain
+                    # Create a temporary ListDataset to apply transformations
+                    temp_val_list_dataset = ListDataset(self.val_data_list, freq=pl_module.hparams.get('freq', None))
+                    transformed_valdata_for_eval = self.transformation.apply(temp_val_list_dataset, is_train=False)
+                    
+                    forecast_it_val, ts_it_val = make_evaluation_predictions(
+                        dataset=transformed_valdata_for_eval, 
+                        predictor=predictor_for_eval,
+                        num_samples=self.num_samples,
                     )
-                    torch.save(
-                        pl_module.state_dict(),
-                        ckpt_path,
-                    )
-                pl_module.log_dict(
-                    {
-                        f"val_{metric}{label}": metrics_pytorch[metric]
-                        for metric in self.log_metrics
-                    }
-                )
-            pl_module.backbone.load_state_dict(
-                self.original_state_dict, strict=True
-            )
-            pl_module.train()
+                    forecasts_val = list(forecast_it_val)
+                    tss_val = list(ts_it_val)
+
+                    metrics_val, _ = evaluator(iter(tss_val), iter(forecasts_val))
+                    metrics_val["CRPS"] = metrics_val["mean_wQuantileLoss"] 
+                    
+                    for metric_name in self.log_metrics:
+                        if metric_name in metrics_val:
+                            pl_module.log(f"val_{metric_name}_{model_label}", metrics_val[metric_name], on_epoch=True, prog_bar=True, logger=True)
+                    
+                    if hasattr(pl_module, 'best_crps') and metrics_val["CRPS"] < pl_module.best_crps and model_label == "main_model":
+                        pl_module.best_crps = metrics_val["CRPS"]
+                        logger.info(f"  New best val_CRPS for main model: {pl_module.best_crps:.4f}")
+                else:
+                    logger.info("  val_data_list is empty, skipping validation set evaluation.")
+
+                if self.test_dataset_gluonts:
+                    try:
+                        # Check if test_dataset_gluonts is non-empty before proceeding
+                        # Iterating to check length can be slow for large file datasets.
+                        # A better check might be specific to the dataset type or a sample.
+                        # For now, let's assume if it's provided, we try to use it.
+                        # if len(list(self.test_dataset_gluonts)) == 0: 
+                        #      logger.info("  test_dataset_gluonts is empty, skipping test set evaluation.")
+                        # else:
+                        logger.info(f"  Evaluating on test_dataset...")
+                        transformed_testdata_for_eval = self.transformation.apply(self.test_dataset_gluonts, is_train=False)
+                        forecast_it_test, ts_it_test = make_evaluation_predictions(
+                            dataset=transformed_testdata_for_eval, predictor=predictor_for_eval, num_samples=self.num_samples,
+                        )
+                        forecasts_test = list(forecast_it_test)
+                        tss_test = list(ts_it_test)
+                        metrics_test, _ = evaluator(iter(tss_test), iter(forecasts_test))
+                        metrics_test["CRPS"] = metrics_test["mean_wQuantileLoss"]
+                        for metric_name in self.log_metrics:
+                            if metric_name in metrics_test:
+                                 pl_module.log(f"test_{metric_name}_{model_label}", metrics_test[metric_name], on_epoch=True, logger=True)
+                    except Exception as e_test_eval:
+                        logger.error(f"  Error during test set evaluation in EvaluateCallback: {e_test_eval}")
+                else:
+                    logger.info("  test_dataset_gluonts not provided, skipping test set evaluation.")
+
+            pl_module.backbone.load_state_dict(original_state_dict, strict=True)
+            logger.info("EvaluateCallback: Restored original model weights.")
+            if original_training_state: pl_module.train() # Restore original training mode

@@ -1,0 +1,6 @@
+src/fdr_project/data_loader.py: 包含所有FDR数据加载、解析、预处理（包括时间戳、BCD码、降采样决策）和保存为JSONL的逻辑。
+custom_scripts/interactive_fdr_setup.py: 驱动数据准备流程的交互式脚本，调用 data_loader.py 中的函数。
+src/uncond_ts_diff/dataset.py: 修改 get_gts_dataset 以正确加载由 interactive_fdr_setup.py 生成的自定义JSONL数据集。
+src/uncond_ts_diff/utils.py: 修改 get_lags_for_freq 以便为您的数据频率（如"250L"）生成合适的滞后项，并能根据上下文长度进行调整。
+src/uncond_ts_diff/model/diffusion/tsdiff.py: 确保在模型初始化时正确调用 get_lags_for_freq 并传递 context_length。
+bin/train_model.py: 确保正确调用 get_gts_dataset 并进行频率校验。

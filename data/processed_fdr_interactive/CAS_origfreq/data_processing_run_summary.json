@@ -1,0 +1,59 @@
+{
+    "input_script_config_file": "D:\\FDR_TS_PREDICT\\unconditional-time-series-diffusion\\configs\\fdr\\data_preprocessing_interactive_config.yaml",
+    "data_source": {
+        "fdr_mat_directory": "D:\\FDR_TS_PREDICT\\unconditional-time-series-diffusion\\data\\raw_fdr_mat\\Tail_685",
+        "target_variable_selected": "CAS",
+        "num_mat_files_scanned": 644
+    },
+    "variable_analysis_and_user_decisions": {
+        "initial_sample_analysis": {
+            "variable_name": "CAS",
+            "consistent_rate": true,
+            "rates_found_hz": [
+                4.0
+            ],
+            "consistent_dtype_in_samples": false,
+            "dtypes_found_in_samples": [
+                "uint8",
+                "float64"
+            ],
+            "avg_length": 19344.0,
+            "min_length": 3024,
+            "max_length": 33008,
+            "descriptions": [
+                "COMPUTED AIRSPEED LSP"
+            ],
+            "units": [
+                "KNOTS"
+            ],
+            "nan_found_in_samples": false,
+            "total_nans_in_samples": 0,
+            "inf_found_in_samples": false,
+            "total_infs_in_samples": 0,
+            "total_elements_for_nan_inf_check": 193440,
+            "all_zero_samples_count": 1,
+            "num_files_effectively_analyzed": 10
+        },
+        "user_processing_choices": {
+            "process_this_variable": true,
+            "resample_enabled": false,
+            "resample_agg_method": null,
+            "resample_fill_method": null,
+            "target_hz": 4.0,
+            "final_pandas_freq": "250L",
+            "nan_handling_method": "keep_as_is"
+        }
+    },
+    "output_dataset_info": {
+        "output_directory": "D:\\FDR_TS_PREDICT\\unconditional-time-series-diffusion\\data\\processed_fdr_interactive\\CAS_origfreq",
+        "gluonts_metadata_freq": "250L",
+        "num_train_series_saved": 468,
+        "num_test_series_saved": 116
+    },
+    "model_length_params_used_for_filtering": {
+        "context_length": 240,
+        "prediction_length": 40,
+        "min_len_factor_applied": 1.5,
+        "min_required_samples_per_series": 420
+    }
+}

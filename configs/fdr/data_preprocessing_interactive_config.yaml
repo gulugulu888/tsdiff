@@ -1,0 +1,6 @@
+# configs/fdr/data_preprocessing_interactive_config.yaml
+fdr_mat_source_path: "data/raw_fdr_mat/Tail_685"   # Relative to project root
+output_base_directory: "data/processed_fdr_interactive" # Relative to project root
+sample_files_for_analysis: 10 # Number of .mat files to sample for initial analysis
+min_len_factor_for_filtering: 1.5 # Sequence length must be at least (context+pred)*factor
+test_split_ratio: 0.2 # Proportion of data for the test set

@@ -1,0 +1,23 @@
+conda create --name tsdiff --yes python=3.8 && conda activate tsdiff
+
+pip install --editable "."
+
+pip uninstall torch torchvision torchaudio
+pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --index-url https://download.pytorch.org/whl/cu117
+
+
+
+python bin/train_model.py -c configs/train_tsdiff/train_solar.yaml --out_dir ./temp_training_output
+
+
+
+nvtop
+
+pgrep -u $USER -f python
+
+
+sudo renice -n -19  -p 424195
+
+
+
+CUDA_VISIBLE_DEVICES="0"

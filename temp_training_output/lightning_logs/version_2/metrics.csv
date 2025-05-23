@@ -1,0 +1,2 @@
+train_loss,train_elbo_loss,epoch,step
+0.373057097196579,0.373057097196579,0,127

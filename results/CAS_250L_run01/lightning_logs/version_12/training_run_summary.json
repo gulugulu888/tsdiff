@@ -1,0 +1,36 @@
+{
+    "config_used_path": "configs/fdr/train_CAS_250L.yaml",
+    "config_content": {
+        "dataset": "./data/processed_fdr_interactive/CAS_origfreq",
+        "freq": "250L",
+        "model": "unconditional",
+        "diffusion_config": "diffusion_small_config",
+        "normalization": "mean",
+        "use_features": false,
+        "use_lags": true,
+        "init_skip": true,
+        "context_length": 240,
+        "prediction_length": 40,
+        "lr": 0.0001,
+        "gradient_clip_val": 0.5,
+        "max_epochs": 200,
+        "num_batches_per_epoch": 64,
+        "batch_size": 16,
+        "sampler": "ddpm",
+        "sampler_params": {
+            "guidance": "quantile",
+            "scale": 4.0
+        },
+        "num_samples_val_callback": 16,
+        "use_validation_set": true,
+        "use_evaluate_callback": true,
+        "eval_every": 20,
+        "device": "cuda:0",
+        "setup": "forecasting",
+        "do_final_eval": true,
+        "save_top_k_checkpoints": 3
+    },
+    "best_checkpoint_path_from_callback": null,
+    "final_evaluation_metrics": "Final eval not performed or no valid checkpoint found.",
+    "log_directory": "results\\CAS_250L_run01\\lightning_logs\\version_12"
+}

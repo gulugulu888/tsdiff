@@ -6,7 +6,7 @@ from pathlib import Path
 from argparse import ArgumentParser, ArgumentTypeError
 from functools import partial
 import re
-
+from gluonts.time_feature import TimeFeature
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -14,7 +14,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from pandas.tseries.frequencies import to_offset
-
+from typing import List, Optional 
 from gluonts.core.component import validated
 from gluonts.dataset import DataEntry
 from gluonts.dataset.field_names import FieldName
@@ -36,6 +36,43 @@ from gluonts.transform import (
     ValidationSplitSampler,
 )
 from gluonts.model.forecast import SampleForecast
+from gluonts.transform import Transformation
+class ConvertStartToPeriod(Transformation):
+    """
+    Converts a string 'start_field' to a pandas.Period object with a given frequency.
+    Also ensures that if the field is already a Period object, its frequency matches.
+    """
+    def __init__(self, field: str, freq: str, errors: str = 'raise'):
+        self.field = field
+        self.freq = freq
+        self.errors = errors # 'raise', 'coerce', 'ignore' for pd.Period
+
+    def __call__(self, data_it, is_train):
+        for data_entry in data_it:
+            if self.field in data_entry:
+                start_val = data_entry[self.field]
+                try:
+                    if isinstance(start_val, str):
+                        data_entry[self.field] = pd.Period(start_val, freq=self.freq)
+                    elif isinstance(start_val, pd.Period):
+                        if start_val.freqstr != self.freq:
+                            # print(f"Warning: Correcting frequency of start_field. Was {start_val.freqstr}, target {self.freq}")
+                            data_entry[self.field] = start_val.asfreq(self.freq)
+                    # If it's already a Period with correct freq, do nothing
+                    # Handle other types like pd.Timestamp if necessary, convert to Period
+                    elif isinstance(start_val, pd.Timestamp):
+                        data_entry[self.field] = start_val.to_period(freq=self.freq)
+
+                except Exception as e:
+                    # Log or handle error based on self.errors policy
+                    if self.errors == 'raise':
+                        raise ValueError(f"Error converting start_field '{start_val}' to Period with freq '{self.freq}': {e}") from e
+                    elif self.errors == 'coerce':
+                        print(f"Warning: Coercing start_field '{start_val}' to NaT due to conversion error with freq '{self.freq}': {e}")
+                        data_entry[self.field] = pd.NaT # Or handle differently
+                    # if 'ignore', do nothing, leave as is
+            yield data_entry
+# --- 结束 ConvertStartToPeriod 类 ---
 
 sns.set(
     style="white",
@@ -48,10 +85,26 @@ def filter_metrics(metrics, select={"ND", "NRMSE", "mean_wQuantileLoss"}):
     return {m: metrics[m].item() for m in select}
 
 
-def extract(a, t, x_shape):
+def extract(a, t, x_shape): # a is the tensor to gather from, t is the index tensor
     batch_size = t.shape[0]
-    out = a.gather(-1, t.cpu())
-    return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
+    # --- 修改以下行 ---
+    # 原来的代码: out = a.gather(-1, t.cpu())
+    # 确保 a 和 t 在同一个设备上。
+    # 如果 a 已经在正确的设备上 (例如 self.device)，那么 t 也应该在该设备上。
+    # t 在 q_sample 中创建时应该已经在 self.device 上了。
+    # 所以，不需要 t.cpu()，除非 a 也在 cpu 上。
+    # 假设 a 已经被正确地移动到了目标设备 (如 self.device)
+    
+    # 检查设备是否匹配，如果不匹配，则将 t 移动到 a 的设备
+    if a.device != t.device:
+        t_on_a_device = t.to(a.device)
+    else:
+        t_on_a_device = t
+        
+    out = a.gather(-1, t_on_a_device) 
+    # --- 结束修改 ---
+    return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(a.device) # Ensure output is also on a's device
+
 
 
 def cosine_beta_schedule(timesteps, s=0.008):
@@ -95,96 +148,189 @@ def plot_train_stats(df: pd.DataFrame, y_keys=None, skip_first_epoch=True):
     plt.show()
 
 
-def get_lags_for_freq(freq_str: str):
+def get_lags_for_freq(freq_str: str, context_length_for_lags: Optional[int] = None) -> List[int]:
+    """
+    Generates a list of lags appropriate for the given frequency string.
+    Lags are filtered to be less than context_length_for_lags if provided.
+    """
+    # print(f"utils.py: get_lags_for_freq called with: freq_str='{freq_str}', context_length_for_lags={context_length_for_lags}")
+    
     offset = to_offset(freq_str)
-    if offset.n > 1:
-        raise NotImplementedError(
-            "Lags for freq multiple > 1 are not implemented yet."
-        )
-    if offset.name == "H":
-        lags_seq = [24 * i for i in [1, 2, 3, 4, 5, 6, 7, 14, 21, 28]]
-    elif offset.name == "D" or offset.name == "B":
-        # TODO: Fix lags for B
-        lags_seq = [30 * i for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]
-    else:
-        raise NotImplementedError(
-            f"Lags for {freq_str} are not implemented yet."
-        )
-    return lags_seq
+    if offset is None:
+        raise ValueError(f"Could not parse frequency string: '{freq_str}'")
+            
+    # print(f"utils.py: Parsed offset: name='{offset.name}', n={offset.n}")
 
+    lags_seq = []
+    base_unit_multiplier = offset.n 
+
+    if offset.name in ['S', 'L', 'U', 'N']: 
+        points_per_second = 1.0 
+        if offset.name == 'S': points_per_second = 1.0 / base_unit_multiplier
+        elif offset.name == 'L': points_per_second = 1000.0 / base_unit_multiplier
+        elif offset.name == 'U': points_per_second = 1_000_000.0 / base_unit_multiplier
+        elif offset.name == 'N': points_per_second = 1_000_000_000.0 / base_unit_multiplier
+        
+        if points_per_second <= 0: points_per_second = 1.0 
+
+        # Example for 4Hz ("250L"): points_per_second = 1000.0 / 250 = 4.0
+        # Lags in terms of number of points.
+        if freq_str == "250L": # Specific for 4Hz
+             lags_seq = [
+                1, 2, 3, 4, # up to 1s
+                8,          # 2s
+                12,         # 3s
+                20,         # 5s
+                40,         # 10s
+                120,        # 30s
+                240         # 60s (1 min)
+                # Add more if context_length allows, e.g., 480 (2min)
+            ]
+        else: # Generic for other S, L, U, N frequencies
+            second_intervals = [1, 2, 5, 10, 30, 60, 5*60, 10*60, 30*60, 60*60]
+            lags_seq = [int(round(s_interval * points_per_second)) for s_interval in second_intervals]
+            if points_per_second > 1.1:
+                 num_short_lags = min(int(round(points_per_second)), 7) 
+                 short_term_point_lags = list(range(1, num_short_lags + 1))
+                 lags_seq.extend(short_term_point_lags)
+
+    elif offset.name in ['T', 'min']: 
+        minute_intervals = [1, 2, 3, 5, 10, 15, 30, 60, 120, 24*60]
+        lags_seq = [int(round(m_interval / base_unit_multiplier)) for m_interval in minute_intervals]
+
+    elif offset.name == 'H': 
+        hour_intervals = [1, 2, 3, 6, 12, 24, 2*24, 3*24, 7*24]
+        lags_seq = [int(round(h_interval / base_unit_multiplier)) for h_interval in hour_intervals]
+
+    elif offset.name in ['D', 'B']: 
+        day_intervals = [1, 2, 3, 5, 7, 14, 21, 30, 60, 90, 180, 365]
+        lags_seq = [int(round(d_interval / base_unit_multiplier)) for d_interval in day_intervals]
+        if offset.name == 'B': 
+            lags_seq.extend([int(round(w * 5 / base_unit_multiplier)) for w in [1,2,3,4,8,12, 26, 52]])
+    
+    elif offset.name.startswith('W'): 
+        week_intervals = [1,2,3,4,8,13,26,52]
+        lags_seq = [int(round(w_interval / base_unit_multiplier)) for w_interval in week_intervals]
+    
+    elif offset.name.startswith('M'): 
+        month_intervals = [1,2,3,6,9,12,18,24]
+        lags_seq = [int(round(m_interval / base_unit_multiplier)) for m_interval in month_intervals]
+
+    else:
+        print(f"Warning: No specific lag sequence defined for frequency name '{offset.name}' (from {freq_str}). Using generic lags.")
+        lags_seq = [1, 2, 3, 4, 5, 6, 7]
+
+    final_lags = sorted(list(set(lag for lag in lags_seq if lag > 0)))
+    
+    if not final_lags: 
+        final_lags = [1]
+        print(f"Warning: No positive lags generated for freq '{freq_str}'. Defaulting to lags_seq=[1].")
+
+    if context_length_for_lags is not None:
+        original_lag_count = len(final_lags)
+        final_lags = [lag for lag in final_lags if lag < context_length_for_lags]
+        if not final_lags and original_lag_count > 0 : 
+             smallest_original_lag = min(set(lag for lag in lags_seq if lag > 0)) if any(lag > 0 for lag in lags_seq) else 1
+             final_lags = [smallest_original_lag] 
+             if smallest_original_lag >= context_length_for_lags : # If even the smallest is too large
+                 final_lags = [1] # Fallback to 1 if context is extremely small
+                 print(f"Warning: Smallest generated lag ({smallest_original_lag}) for '{freq_str}' was >= context_length ({context_length_for_lags}). Defaulting to lags_seq=[1].")
+             else:
+                 print(f"Warning: All generated lags for '{freq_str}' were >= context_length ({context_length_for_lags}). Using smallest lag: {final_lags}.")
+        elif not final_lags and original_lag_count == 0: 
+             final_lags = [1]
+             print(f"Warning: No lags were generated for '{freq_str}' and context_length was applied. Defaulting to lags_seq=[1].")
+
+    # print(f"utils.py: Final lags_seq for '{freq_str}' (context: {context_length_for_lags}): {final_lags}")
+    return final_lags
 
 def create_transforms(
-    num_feat_dynamic_real,
-    num_feat_static_cat,
-    num_feat_static_real,
-    time_features,
-    prediction_length,
+    num_feat_dynamic_real: int,    
+    num_feat_static_cat: int,      
+    num_feat_static_real: int,     
+    time_features: List[TimeFeature], 
+    prediction_length: int,
+    freq_str: str 
 ):
-    remove_field_names = []
-    if num_feat_static_real == 0:
-        remove_field_names.append(FieldName.FEAT_STATIC_REAL)
-    if num_feat_dynamic_real == 0:
-        remove_field_names.append(FieldName.FEAT_DYNAMIC_REAL)
+    # Initialize list of transformations
+    transformations = []
 
-    return Chain(
-        [RemoveFields(field_names=remove_field_names)]
-        + (
-            [SetField(output_field=FieldName.FEAT_STATIC_CAT, value=[0])]
-            if not num_feat_static_cat > 0
-            else []
-        )
-        + (
-            [SetField(output_field=FieldName.FEAT_STATIC_REAL, value=[0.0])]
-            if not num_feat_static_real > 0
-            else []
-        )
-        + [
-            AsNumpyArray(
-                field=FieldName.FEAT_STATIC_CAT,
-                expected_ndim=1,
-                dtype=int,
-            ),
-            AsNumpyArray(
-                field=FieldName.FEAT_STATIC_REAL,
-                expected_ndim=1,
-            ),
-            AsNumpyArray(
-                field=FieldName.TARGET,
-                expected_ndim=1,
-            ),
-            AddObservedValuesIndicator(
-                target_field=FieldName.TARGET,
-                output_field=FieldName.OBSERVED_VALUES,
-            ),
-            AddTimeFeatures(
-                start_field=FieldName.START,
-                target_field=FieldName.TARGET,
-                output_field=FieldName.FEAT_TIME,
-                time_features=time_features,
-                pred_length=prediction_length,
-            ),
-            AddAgeFeature(
-                target_field=FieldName.TARGET,
-                output_field=FieldName.FEAT_AGE,
-                pred_length=prediction_length,
-                log_scale=True,
-            ),
-            AddMeanAndStdFeature(
-                target_field=FieldName.TARGET,
-                output_field="stats",
-            ),
-            VstackFeatures(
-                output_field=FieldName.FEAT_TIME,
-                input_fields=[FieldName.FEAT_TIME, FieldName.FEAT_AGE]
-                + (
-                    [FieldName.FEAT_DYNAMIC_REAL]
-                    if num_feat_dynamic_real > 0
-                    else []
-                ),
-            ),
-        ]
+    # 1. Handle removal of static fields if they are not configured to be used
+    #    If num_feat_static_cat is 0, AsNumpyArray for it will be skipped.
+    #    If num_feat_static_real is 0, AsNumpyArray for it will be skipped.
+    #    SetField will ensure these fields exist with defaults if needed by PREDICTION_INPUT_NAMES.
+    
+    # Ensure FEAT_STATIC_CAT exists, with default if not provided from data & config
+    if num_feat_static_cat == 0:
+        transformations.append(SetField(output_field=FieldName.FEAT_STATIC_CAT, value=[0]))
+    transformations.append(
+        AsNumpyArray(field=FieldName.FEAT_STATIC_CAT, expected_ndim=1, dtype=int)
     )
 
+    # Ensure FEAT_STATIC_REAL exists, with default if not provided from data & config
+    if num_feat_static_real == 0:
+        transformations.append(SetField(output_field=FieldName.FEAT_STATIC_REAL, value=[0.0]))
+    transformations.append(
+        AsNumpyArray(field=FieldName.FEAT_STATIC_REAL, expected_ndim=1, dtype=np.float32)
+    )
+
+    # 2. Process TARGET and other time-based features
+    transformations.extend([
+        AsNumpyArray(field=FieldName.TARGET, expected_ndim=1, dtype=np.float32),
+        ConvertStartToPeriod(field=FieldName.START, freq=freq_str), # Ensure START is a Period
+        AddObservedValuesIndicator(
+            target_field=FieldName.TARGET,
+            output_field=FieldName.OBSERVED_VALUES,
+        ),
+        AddTimeFeatures( 
+            start_field=FieldName.START, 
+            target_field=FieldName.TARGET, 
+            output_field=FieldName.FEAT_TIME, # Creates 'time_feat'
+            time_features=time_features, 
+            pred_length=prediction_length,
+        ),
+        AddAgeFeature(
+            target_field=FieldName.TARGET,
+            output_field=FieldName.FEAT_AGE, # Creates 'age_feat'
+            pred_length=prediction_length,
+            log_scale=True,
+        ),
+    ])
+
+    # 3. Stack dynamic features (time, age, and any *external* dynamic real)
+    #    into a single FEAT_DYNAMIC_REAL field.
+    input_fields_for_vstack = [FieldName.FEAT_TIME, FieldName.FEAT_AGE]
+    
+    # If external dynamic real features are configured (num_feat_dynamic_real > 0),
+    # we assume they are already present in the data_entry under FieldName.FEAT_DYNAMIC_REAL.
+    # VstackFeatures will then combine the generated FEAT_TIME, FEAT_AGE, and this existing FEAT_DYNAMIC_REAL.
+    # If num_feat_dynamic_real == 0, then only FEAT_TIME and FEAT_AGE are stacked.
+    if num_feat_dynamic_real > 0:
+        # This implies that the input data should have a FieldName.FEAT_DYNAMIC_REAL field
+        # if num_feat_dynamic_real is > 0 in the config.
+        # If it doesn't, an error will occur here or earlier.
+        # The `interactive_fdr_setup.py` currently doesn't add external dynamic features.
+        # So, for your current setup, num_feat_dynamic_real in config should be 0.
+        input_fields_for_vstack.append(FieldName.FEAT_DYNAMIC_REAL) # <--- CORRECTED: Add existing FEAT_DYNAMIC_REAL if it's supposed to be there
+
+    # VstackFeatures creates/overwrites the output_field with the stacked inputs.
+    # The output field should be FEAT_DYNAMIC_REAL as InstanceSplitter expects this
+    # to create past_feat_dynamic_real and future_feat_dynamic_real.
+    transformations.append(
+        VstackFeatures( 
+            output_field=FieldName.FEAT_DYNAMIC_REAL, 
+            input_fields=input_fields_for_vstack,
+            # delete_input_fields=True # Default is False. If True, FEAT_TIME and FEAT_AGE are removed after stacking.
+                                     # This is usually desired to avoid duplicate data.
+        )
+    )
+    
+    # Optional: If you want to explicitly remove the original FEAT_TIME and FEAT_AGE after stacking
+    # transformations.append(RemoveFields(field_names=[FieldName.FEAT_TIME, FieldName.FEAT_AGE]))
+    # However, VstackFeatures with a common output_field might handle this implicitly if input fields are part of it.
+    # If output_field is FEAT_DYNAMIC_REAL and FEAT_TIME was an input, the original FEAT_TIME is effectively gone.
+
+    return Chain(transformations)
 
 def create_splitter(past_length: int, future_length: int, mode: str = "train"):
     if mode == "train":
@@ -197,6 +343,8 @@ def create_splitter(past_length: int, future_length: int, mode: str = "train"):
         instance_sampler = ValidationSplitSampler(min_future=future_length)
     elif mode == "test":
         instance_sampler = TestSplitSampler()
+    else: # Added else for robustness
+        raise ValueError(f"Unknown mode '{mode}' for create_splitter.")
 
     splitter = InstanceSplitter(
         target_field=FieldName.TARGET,
@@ -206,11 +354,16 @@ def create_splitter(past_length: int, future_length: int, mode: str = "train"):
         instance_sampler=instance_sampler,
         past_length=past_length,
         future_length=future_length,
-        time_series_fields=[FieldName.FEAT_TIME, FieldName.OBSERVED_VALUES],
+        # --- 修改 time_series_fields ---
+        time_series_fields=[
+            FieldName.FEAT_DYNAMIC_REAL, # <--- 从 FEAT_TIME 改为 FEAT_DYNAMIC_REAL
+            FieldName.OBSERVED_VALUES
+        ],
+        # --- 结束修改 ---
+        # Output field names for dynamic features will now be:
+        # past_feat_dynamic_real, future_feat_dynamic_real
     )
     return splitter
-
-
 def get_next_file_num(
     base_fname: str,
     base_dir: Path,

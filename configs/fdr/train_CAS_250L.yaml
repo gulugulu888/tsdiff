@@ -1,0 +1,40 @@
+# unconditional-time-series-diffusion/configs/fdr/train_CAS_250L.yaml
+
+dataset: "./data/processed_fdr_interactive/CAS_origfreq" # <--- 必须是这个路径
+freq: "250L"                     # <--- 必须是 "250L"
+
+# 模型架构和扩散参数
+model: unconditional
+diffusion_config: diffusion_small_config # 可以从这个开始。如果训练慢或显存不足，尝试更小的；如果效果不好且资源足，尝试 diffusion_s4_config
+normalization: mean                 
+use_features: False                 # 单变量预测，不使用外部时间/静态特征作为额外输入给backbone
+use_lags: True                      # 使用滞后项作为模型输入的一部分
+init_skip: True                     
+
+# 训练超参数
+context_length: 240              # 必须是 240
+prediction_length: 40               # 必须是 40
+
+lr: 1.e-4                           # 初始学习率，可以尝试 1e-3 或 5e-4
+gradient_clip_val: 0.5
+max_epochs: 200                     # 初始训练周期，观察损失曲线决定是否需要更多
+num_batches_per_epoch: 64           # (468训练样本 / batch_size 16 = 29.25)。可以设为 30 或 60 或 128。
+                                    # 如果设太小，每个epoch很快但梯度更新可能不稳定。
+                                    # 如果设太大，每个epoch慢。
+batch_size: 16                      # 根据GPU显存调整。 (240+40)点 @ 4Hz，16应该可以。如果OOM，减小它。
+
+# 验证回调中的采样器设置 (如果使用 EvaluateCallback)
+sampler: ddpm                       # 'ddpm' 或 'ddim'
+sampler_params:
+  guidance: quantile              # 'quantile' 或 'MSE'
+  scale: 4.0                      # 验证时引导强度
+num_samples_val_callback: 16      # 验证时采样数量 (原配置中是 num_samples)
+
+# 训练过程控制
+use_validation_set: True            # TSDiff的train_model.py会尝试使用EvaluateCallback，它需要验证数据
+use_evaluate_callback: True         # 明确使用TSDiff的评估回调
+eval_every: 20                      # 每多少个 epoch 在验证集上评估一次
+device: cuda:0                      # 或 "cpu"
+setup: forecasting
+do_final_eval: True                 # 训练结束后在测试集上进行一次最终评估
+save_top_k_checkpoints: 3           # 保存最好的3个模型

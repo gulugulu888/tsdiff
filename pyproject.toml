@@ -6,16 +6,18 @@ authors = []
 dependencies = [
     "torch~=1.13.1",
     "pytorch-lightning~=1.9.4",
-    "gluonts[mxnet,pro]~=0.12.3",
-    "matplotlib",
+    "gluonts[torch,pro]==0.12.3",  # CRITICAL CHANGE: Use torch backend
+    "matplotlib~=3.7.0",         # Modern matplotlib
     "seaborn",
     "opt_einsum~=3.3.0",
     "einops",
     "black",
     "tqdm",
-    "scipy",
+    "numpy~=1.23.0",             # Modern numpy, compatible with torch and Python 3.8
+    "scipy~=1.9.0",               # Compatible with numpy~=1.23.0
     "scikit-learn",
-    "numba",
+    "numba~=0.56.0",              # Compatible with numpy~=1.23.0
+    "versioneer",
     "jupyter",
     "rich",
     "pykeops==2.1.1",

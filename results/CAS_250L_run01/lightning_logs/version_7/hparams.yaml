@@ -1,0 +1,11 @@
+context_length: 240
+freq: 250L
+lr: 0.0001
+normalization: mean
+num_feat_dynamic_real: 0
+num_feat_static_cat: 0
+num_feat_static_real: 0
+prediction_length: 40
+timesteps: 100
+use_features: false
+use_lags: true

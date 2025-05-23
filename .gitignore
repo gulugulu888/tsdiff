@@ -1,11 +1,3 @@
-__pycache__
-lightning_logs/
-.DS_Store
-*.egg-info
-/results/
-/ckpts/
-/saved_samples/
-.vscode/
-/sm_runs/
-/data/
-/checkpoints/
+# 忽略原始数据目录中的特定大文件目录
+
+data/raw_fdr_mat/
