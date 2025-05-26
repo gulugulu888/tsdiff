@@ -1,0 +1,7 @@
+2025-05-26 16:30:26 [INFO] __main__: Configuration loaded successfully from configs\fdr\train_CAS_250L.yaml
+2025-05-26 16:30:26 [INFO] __main__: Loading trained model from checkpoint: results\CAS_250L_run01\train_CAS_250L\checkpoints\epoch=epoch=029-loss=train_loss_epoch=0.1137.ckpt
+2025-05-26 16:30:26 [WARNING] uncond_ts_diff.model.diffusion._base: Frequency '250L' (parsed base name: 'L') is not in the list of directly supported base frequencies for automatic time feature generation by `time_features_from_frequency_str`. No calendar time features will be automatically added. Model will rely on lags and learned dynamics.
+2025-05-26 16:30:26 [INFO] __main__: Model backbone state dict loaded.
+2025-05-26 16:30:26 [INFO] __main__: Trained model loaded successfully and set to evaluation mode.
+2025-05-26 16:30:26 [INFO] __main__: Loading test dataset from: data\processed_fdr_interactive\CAS_origrate_filtByCAS30p0units\test.jsonl
+2025-05-26 16:30:27 [ERROR] __main__: Test dataset is empty or could not be loaded. Exiting.
