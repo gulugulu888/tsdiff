@@ -17,7 +17,7 @@ prediction_length: 40               # 必须是 40
 
 lr: 1.e-4                           # 初始学习率，可以尝试 1e-3 或 5e-4
 gradient_clip_val: 0.5
-max_epochs: 200                     # 初始训练周期，观察损失曲线决定是否需要更多
+max_epochs: 30                     # 初始训练周期，观察损失曲线决定是否需要更多
 num_batches_per_epoch: 64           # (468训练样本 / batch_size 16 = 29.25)。可以设为 30 或 60 或 128。
                                     # 如果设太小，每个epoch很快但梯度更新可能不稳定。
                                     # 如果设太大，每个epoch慢。

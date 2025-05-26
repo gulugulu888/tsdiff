@@ -6,12 +6,12 @@ import sys
 import yaml 
 import torch
 from tqdm.auto import tqdm 
-import numpy as np # Ensure numpy is imported
-import json      # Ensure json is imported
+import numpy as np
+import json
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, RichProgressBar 
-
+from gluonts.dataset.common import ListDataset
 from gluonts.dataset.loader import TrainDataLoader, ValidationDataLoader 
 from gluonts.dataset.split import OffsetSplitter 
 from gluonts.itertools import Cached
@@ -34,6 +34,28 @@ from uncond_ts_diff.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# 添加一个强制保存的 Callback 作为备份
+class ForceCheckpointCallback(pl.Callback):
+    """强制保存模型的备份 callback"""
+    def __init__(self, save_dir):
+        super().__init__()
+        self.save_dir = Path(save_dir)
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+        
+    def on_train_epoch_end(self, trainer, pl_module):
+        epoch = trainer.current_epoch
+        # 每个 epoch 都保存
+        save_path = self.save_dir / f"backup_epoch_{epoch:03d}.pth"
+        checkpoint = {
+            'epoch': epoch,
+            'state_dict': pl_module.state_dict(),
+            'optimizer_state_dict': trainer.optimizers[0].state_dict() if trainer.optimizers else None,
+        }
+        torch.save(checkpoint, save_path)
+        print(f"\n[Backup] Saved epoch {epoch} to {save_path}")
+
 
 def create_model(config: dict) -> TSDiff:
     logger.info("Creating TSDiff model instance...")
@@ -61,6 +83,7 @@ def create_model(config: dict) -> TSDiff:
     )
     logger.info("TSDiff model created.")
     return model
+
 
 def run_final_evaluation(
     config: dict, 
@@ -104,6 +127,7 @@ def run_final_evaluation(
     logger.info(f"Final Evaluation Metrics: {metrics_to_log}")
     return metrics_to_log
 
+
 def main(config: dict, log_dir: Path, cli_args: argparse.Namespace):
     dataset_path = config["dataset"]
     freq = config["freq"]
@@ -115,7 +139,9 @@ def main(config: dict, log_dir: Path, cli_args: argparse.Namespace):
     logger.info(f"Expected prediction length from config: {prediction_length}")
 
     dataset_gluonts = get_gts_dataset(dataset_path, config_freq=freq, config_prediction_length=prediction_length)
-    if dataset_gluonts is None: logger.error(f"Failed to load dataset '{dataset_path}'. Exiting."); sys.exit(1)
+    if dataset_gluonts is None:
+        logger.error(f"Failed to load dataset '{dataset_path}'. Exiting.")
+        sys.exit(1)
     logger.info(f"Dataset loaded. Metadata freq: {dataset_gluonts.metadata.freq}, Metadata pred_len: {dataset_gluonts.metadata.prediction_length}")
 
     if dataset_gluonts.metadata.freq != freq:
@@ -146,15 +172,16 @@ def main(config: dict, log_dir: Path, cli_args: argparse.Namespace):
         missing_values_splitter = OffsetSplitter(offset=-total_len_for_offset)
         training_data_source_for_loader, data_for_val_split = missing_values_splitter.split(temp_transformed_train)
     else:
-        logger.error(f"Unknown setup type: {config['setup']}"); sys.exit(1)
+        logger.error(f"Unknown setup type: {config['setup']}")
+        sys.exit(1)
 
     full_transformation_pipeline = create_transforms(
         num_feat_dynamic_real=config.get("num_feat_dynamic_real", 0),
         num_feat_static_cat=config.get("num_feat_static_cat", 0),
         num_feat_static_real=config.get("num_feat_static_real", 0),
-        time_features=model.time_features, # 从模型实例获取，TSDiffBase中已根据freq处理
+        time_features=model.time_features,
         prediction_length=prediction_length,
-        freq_str=config["freq"] # <--- 添加这一行，传递配置文件中的频率字符串
+        freq_str=config["freq"]
     )
     training_instance_splitter = create_splitter(
         past_length=context_length + max(model.lags_seq if model.lags_seq else [0]),
@@ -168,120 +195,230 @@ def main(config: dict, log_dir: Path, cli_args: argparse.Namespace):
         shuffle_buffer_length=config.get("shuffle_buffer_length", 1000)
     )
 
+    # Callbacks
     callbacks_list = []
-    pytorch_val_dataloader = None 
+    pytorch_val_dataloader = None
 
-    if config.get("use_validation_set", False):
-        if config.get("use_evaluate_callback", True): 
-            logger.info("Setting up validation using TSDiff's EvaluateCallback.")
-            num_train_series = 0
-            try: num_train_series = len(list(dataset_gluonts.train))
-            except Exception as e_len: logger.warning(f"Could not determine num_train_series for validation split: {e_len}.")
-            
-            num_val_series_for_callback = config.get("num_val_series_for_callback", max(1, int(num_train_series * 0.1)) if num_train_series > 10 else (1 if num_train_series > 0 else 0) )
-            val_series_list_for_callback = []
+    # 1. Setup EvaluateCallback if enabled
+    if config.get("use_validation_set", False) and config.get("use_evaluate_callback", True):
+        logger.info("Setting up validation using TSDiff's EvaluateCallback.")
+        num_train_series = 0
+        try:
+            if hasattr(dataset_gluonts, 'train') and dataset_gluonts.train:
+                 num_train_series = len(list(dataset_gluonts.train)) 
+        except Exception as e_len:
+            logger.warning(f"Could not determine number of training series for validation split: {e_len}.")
 
-            if num_train_series > 0:
-                all_transformed_training_entries = list(data_for_val_split) # data_for_val_split has target as np.array
-                actual_num_val_series = min(num_val_series_for_callback, len(all_transformed_training_entries))
-                if actual_num_val_series > 0 :
-                    val_series_list_for_callback = all_transformed_training_entries[-actual_num_val_series:]
-                    logger.info(f"Using last {len(val_series_list_for_callback)} series from training data for EvaluateCallback's val_dataset.")
-                else: logger.warning("Not enough training series for EvaluateCallback validation split.")
-            else: logger.warning("Training data source empty, cannot create val_dataset for EvaluateCallback.")
+        num_val_series_for_callback = config.get(
+            "num_val_series_for_callback", 
+            max(1, int(num_train_series * 0.1)) if num_train_series > 10 else (1 if num_train_series > 0 else 0)
+        )
+        val_series_list_for_callback = []
 
-            if val_series_list_for_callback:
-                callbacks_list.append(EvaluateCallback(
-                    context_length=context_length, prediction_length=prediction_length,
-                    sampler=config.get("sampler_val_callback", config.get("sampler","ddpm")), 
-                    sampler_kwargs=config.get("sampler_params_val_callback", config.get("sampler_params", {})),
-                    num_samples=config.get("num_samples_val_callback", 16), model=model, 
-                    transformation=full_transformation_pipeline, 
-                    val_dataset=val_series_list_for_callback, 
-                    test_dataset=dataset_gluonts.test, 
-                    eval_every=config["eval_every"],
-                ))
-                logger.info(f"EvaluateCallback added with {len(val_series_list_for_callback)} validation series.")
-            else: logger.warning("EvaluateCallback not added as no validation series were prepared.")
-        else: 
-            logger.info("TSDiff's EvaluateCallback is disabled. If using PyTorch Lightning's validation loop, ensure val_dataloader is configured.")
-            # Placeholder for PL val_dataloader setup if needed
-            # _, val_ds_for_pl_loop_source = OffsetSplitter(...).split(data_for_val_split)
-            # ... setup pytorch_val_dataloader ...
-            pass
+        if num_train_series > 0 and data_for_val_split is not None:
+            all_transformed_training_entries = list(data_for_val_split)
+            actual_num_val_series = min(num_val_series_for_callback, len(all_transformed_training_entries))
+            if actual_num_val_series > 0:
+                val_series_list_for_callback = all_transformed_training_entries[-actual_num_val_series:]
+                logger.info(f"Using last {len(val_series_list_for_callback)} series from training data for EvaluateCallback's val_dataset.")
+            else:
+                logger.warning("Not enough distinct training series available to create a validation set for EvaluateCallback after initial filtering.")
+        else:
+            logger.warning("Training data source appears empty or data_for_val_split is None, cannot create val_dataset for EvaluateCallback.")
 
-    # --- Corrected checkpoint_monitor logic ---
-    checkpoint_monitor = "train_loss_epoch" 
-    monitor_mode = "min" 
+        if val_series_list_for_callback:
+            callbacks_list.append(EvaluateCallback(
+                context_length=context_length,
+                prediction_length=prediction_length,
+                sampler=config.get("sampler_val_callback", config.get("sampler", "ddpm")),
+                sampler_kwargs=config.get("sampler_params_val_callback", config.get("sampler_params", {})),
+                num_samples=config.get("num_samples_val_callback", 16),
+                model=model,
+                transformation=full_transformation_pipeline,
+                val_dataset=val_series_list_for_callback,
+                test_dataset=dataset_gluonts.test,
+                eval_every=config["eval_every"],
+            ))
+            logger.info(f"EvaluateCallback added with {len(val_series_list_for_callback)} validation series.")
+        else:
+            logger.warning("EvaluateCallback not added as no validation series were prepared.")
     
-    if pytorch_val_dataloader is not None and not config.get("use_evaluate_callback", True): 
-        checkpoint_monitor = "valid_loss_epoch" 
-        logger.info(f"ModelCheckpoint will monitor PyTorch Lightning's: {checkpoint_monitor}")
+    # 2. Setup PyTorch Lightning native validation dataloader if EvaluateCallback is not the primary validator
+    elif config.get("use_validation_set", False) and not config.get("use_evaluate_callback", True):
+        logger.info("Setting up PyTorch Lightning native validation loop.")
+        if data_for_val_split is not None and len(list(data_for_val_split)) > 0:
+            num_total_val_split_series = len(list(data_for_val_split))
+            num_pl_val_series = max(1, int(num_total_val_split_series * 0.1)) if num_total_val_split_series > 10 else (1 if num_total_val_split_series > 0 else 0)
+
+            if num_pl_val_series > 0:
+                all_val_split_entries = list(data_for_val_split)
+                val_ds_for_pl_loop_source_list = all_val_split_entries[-num_pl_val_series:]
+                
+                val_ds_for_pl_loop_gluonts = ListDataset(val_ds_for_pl_loop_source_list, freq=config["freq"])
+
+                transformed_val_data_for_pl = full_transformation_pipeline.apply(val_ds_for_pl_loop_gluonts, is_train=False)
+                val_instance_splitter_for_pl = create_splitter(
+                   past_length=context_length + max(model.lags_seq if model.lags_seq else [0]),
+                   future_length=prediction_length,
+                   mode="val",
+                )
+                pytorch_val_dataloader = ValidationDataLoader(
+                   Cached(transformed_val_data_for_pl),
+                   batch_size=config.get("val_batch_size", config["batch_size"] * 2), 
+                   stack_fn=batchify,
+                   transform=val_instance_splitter_for_pl,
+                )
+                if not list(pytorch_val_dataloader):
+                    logger.warning("PyTorch Lightning validation dataloader configured but seems to be empty.")
+                    pytorch_val_dataloader = None
+                else:
+                    logger.info(f"PyTorch Lightning validation dataloader configured with {len(val_ds_for_pl_loop_source_list)} series.")
+            else:
+                logger.warning("Not enough data in data_for_val_split to create a PL validation dataloader.")
+        else:
+            logger.warning("data_for_val_split is None or empty, cannot create PL validation dataloader.")
+
+    # 3. Determine ModelCheckpoint monitor based on validation setup
+    checkpoint_monitor = "train_loss_epoch"
+    monitor_mode = "min"
+
+    if pytorch_val_dataloader is not None:
+        checkpoint_monitor = "valid_loss_epoch"
+        monitor_mode = "min"
+        logger.info(f"ModelCheckpoint will monitor PyTorch Lightning's validation metric: {checkpoint_monitor}")
     elif any(isinstance(cb, EvaluateCallback) for cb in callbacks_list) and \
-         config.get("use_evaluate_callback", True) and \
          config.get("monitor_evaluate_callback_metric_name"):
         checkpoint_monitor = config["monitor_evaluate_callback_metric_name"]
         monitor_mode = config.get("monitor_evaluate_callback_metric_mode", "min") 
-        logger.info(f"ModelCheckpoint configured to monitor EvaluateCallback metric: {checkpoint_monitor} (mode: {monitor_mode})")
+        logger.info(f"ModelCheckpoint configured to monitor EvaluateCallback metric: '{checkpoint_monitor}' (mode: {monitor_mode})")
     else:
-        logger.info(f"ModelCheckpoint will monitor default: {checkpoint_monitor} (mode: {monitor_mode})")
-    # --- End corrected logic ---
+        logger.info(f"ModelCheckpoint will monitor default training metric: {checkpoint_monitor} (mode: {monitor_mode})")
 
+    # 4. Create ModelCheckpoint callback - 修复的关键部分
     run_specific_checkpoint_dir = Path(log_dir) / cli_args.config.split('/')[-1].replace('.yaml','').replace('.yml','').replace('.json','') / "checkpoints"
     run_specific_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
+    # 转换为字符串路径（Windows 兼容性）
+    checkpoint_dir_str = str(run_specific_checkpoint_dir.resolve())
+    logger.info(f"Checkpoints will be saved in: {checkpoint_dir_str}")
+
+    # 创建主要的 checkpoint callback
     checkpoint_callback = ModelCheckpoint(
-        save_top_k=config.get("save_top_k_checkpoints", 3),
-        monitor=checkpoint_monitor, 
-        mode=monitor_mode,
-        filename=f"{Path(dataset_path).stem}"+"-{epoch:03d}-{"+checkpoint_monitor+":.3f}",
-        save_last=True, save_weights_only=True, dirpath=run_specific_checkpoint_dir 
+        dirpath=checkpoint_dir_str,
+        filename="epoch={epoch:03d}-loss={train_loss_epoch:.4f}",
+        save_top_k=-1,  # 保存所有
+        save_last=True,
+        every_n_epochs=1,
+        save_weights_only=False,  # 保存完整 checkpoint
+        verbose=True,  # 显示保存信息
+        save_on_train_epoch_end=True  # 确保在 epoch 结束时保存
     )
     callbacks_list.append(checkpoint_callback)
-    
-    if not any(isinstance(cb, RichProgressBar) for cb in callbacks_list):
-        callbacks_list.append(RichProgressBar()) 
-    else: 
-        for cb_idx, cb_instance in enumerate(callbacks_list):
-            if isinstance(cb_instance, RichProgressBar): callbacks_list.pop(cb_idx); break
-        callbacks_list.append(RichProgressBar())
 
+    # 添加额外的备份 callback
+    backup_callback = ForceCheckpointCallback(run_specific_checkpoint_dir)
+    callbacks_list.append(backup_callback)
+    
+    # 5. Add RichProgressBar if not already present
+    if not any(isinstance(cb, RichProgressBar) for cb in callbacks_list):
+        callbacks_list.append(RichProgressBar())
+    else:
+        temp_callbacks = [cb for cb in callbacks_list if not isinstance(cb, RichProgressBar)]
+        callbacks_list = temp_callbacks + [RichProgressBar()]
+
+    # 6. Setup and run Trainer
     trainer = pl.Trainer(
-        accelerator="gpu" if config["device"].startswith("cuda") else "cpu",
-        devices=[int(config["device"].split(":")[-1])] if config["device"].startswith("cuda") and ":" in config["device"] else "auto",
-        max_epochs=config["max_epochs"], enable_progress_bar=True, 
-        num_sanity_val_steps=0, callbacks=callbacks_list, default_root_dir=log_dir, 
-        gradient_clip_val=config.get("gradient_clip_val", None),
+        accelerator="gpu" if torch.cuda.is_available() and config["device"].startswith("cuda") else "cpu",
+        devices=1,
+        max_epochs=config["max_epochs"],
+        callbacks=callbacks_list,
+        default_root_dir=str(log_dir),
+        enable_checkpointing=True,  # 确保启用
+        logger=True,
+        log_every_n_steps=1,
+        gradient_clip_val=config.get("gradient_clip_val", 1.0),
+        num_sanity_val_steps=0,
         check_val_every_n_epoch=config.get("eval_every", 1) if pytorch_val_dataloader or any(isinstance(cb, EvaluateCallback) for cb in callbacks_list) else int(1e6),
     )
     
     logger.info(f"Starting training. Logging to {trainer.logger.log_dir}")
+    
     try:
         trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=pytorch_val_dataloader)
-        logger.info("Training completed.")
+        logger.info("Training completed successfully!")
+        
+        # 手动保存最终模型
+        try:
+            final_checkpoint_path = Path(checkpoint_dir_str) / "final_manual.ckpt"
+            trainer.save_checkpoint(str(final_checkpoint_path))
+            logger.info(f"Manually saved final checkpoint to: {final_checkpoint_path}")
+            
+            # 额外保存 state_dict
+            state_dict_path = Path(checkpoint_dir_str) / "model_weights.pth"
+            torch.save(model.state_dict(), str(state_dict_path))
+            logger.info(f"Saved model weights to: {state_dict_path}")
+        except Exception as e:
+            logger.error(f"Error saving manual checkpoint: {e}")
+            
     except Exception as e_fit:
-        logger.error(f"Error during trainer.fit: {e_fit}"); import traceback; logger.error(traceback.format_exc()); sys.exit(1)
+        logger.error(f"Error during trainer.fit: {e_fit}")
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.exit(1)
 
+    # 查找最佳 checkpoint - 改进的逻辑
     best_model_path_from_callback = checkpoint_callback.best_model_path
     final_eval_metrics_result = "Final eval not performed or no valid checkpoint found."
     path_to_load_for_final_eval = None
 
+    # 尝试多种方式查找 checkpoint
     if best_model_path_from_callback and Path(best_model_path_from_callback).exists():
         path_to_load_for_final_eval = best_model_path_from_callback
-        logger.info(f"Best checkpoint path from callback: {path_to_load_for_final_eval}")
-    elif checkpoint_callback.last_model_path and Path(checkpoint_callback.last_model_path).exists():
+        logger.info(f"Found best checkpoint from callback: {path_to_load_for_final_eval}")
+    elif hasattr(checkpoint_callback, 'last_model_path') and checkpoint_callback.last_model_path and Path(checkpoint_callback.last_model_path).exists():
         path_to_load_for_final_eval = checkpoint_callback.last_model_path
-        logger.warning(f"No 'best' model checkpoint found by monitor '{checkpoint_monitor}'. Using 'last' model: {path_to_load_for_final_eval}")
+        logger.info(f"Using last checkpoint from callback: {path_to_load_for_final_eval}")
     else:
-        logger.error("No best or last model checkpoint found by ModelCheckpoint callback.")
+        # 扫描目录查找 checkpoint 文件
+        logger.info(f"Scanning directory for checkpoints: {checkpoint_dir_str}")
+        checkpoint_patterns = ['*.ckpt', '*.pth', '*.pt']
+        all_ckpts = []
+        
+        for pattern in checkpoint_patterns:
+            ckpts = list(Path(checkpoint_dir_str).glob(pattern))
+            all_ckpts.extend(ckpts)
+            if ckpts:
+                logger.info(f"Found {len(ckpts)} files matching {pattern}")
+        
+        if all_ckpts:
+            # 按修改时间排序
+            all_ckpts.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            path_to_load_for_final_eval = str(all_ckpts[0])
+            logger.info(f"Found {len(all_ckpts)} checkpoint files, using: {path_to_load_for_final_eval}")
+            
+            # 列出找到的文件
+            logger.info("Checkpoint files found:")
+            for i, ckpt in enumerate(all_ckpts[:5]):  # 只显示前5个
+                size_mb = ckpt.stat().st_size / (1024 * 1024)
+                logger.info(f"  {i+1}. {ckpt.name} ({size_mb:.2f} MB)")
+        else:
+            logger.error(f"No checkpoint files found in {checkpoint_dir_str}")
+            logger.error(f"Directory exists: {Path(checkpoint_dir_str).exists()}")
+            if Path(checkpoint_dir_str).exists():
+                logger.error(f"Directory contents: {list(Path(checkpoint_dir_str).iterdir())}")
 
+    # 最终评估
     if path_to_load_for_final_eval and config.get("do_final_eval", True):
         logger.info(f"Loading model from {path_to_load_for_final_eval} for final evaluation.")
         eval_model = create_model(config) 
         try:
             ckpt = torch.load(path_to_load_for_final_eval, map_location=config["device"])
-            eval_model.load_state_dict(ckpt['state_dict'])
-            eval_model.to(config["device"]); eval_model.eval()
+            if 'state_dict' in ckpt:
+                eval_model.load_state_dict(ckpt['state_dict'])
+            else:
+                eval_model.load_state_dict(ckpt)
+            eval_model.to(config["device"])
+            eval_model.eval()
             final_eval_metrics_result = run_final_evaluation(config, eval_model, dataset_gluonts.test, full_transformation_pipeline)
         except Exception as e_eval_load:
             logger.error(f"Error loading/evaluating from {path_to_load_for_final_eval}: {e_eval_load}")
@@ -289,12 +426,19 @@ def main(config: dict, log_dir: Path, cli_args: argparse.Namespace):
     else:
         logger.info("Final evaluation skipped.")
 
+    # 保存训练总结
     results_summary_path = Path(trainer.logger.log_dir) / "training_run_summary.json"
     summary_data = {
-        "config_used_path": cli_args.config, "config_content": config,
+        "config_used_path": cli_args.config,
+        "config_content": config,
         "best_checkpoint_path_from_callback": str(best_model_path_from_callback) if best_model_path_from_callback else None,
-        "final_evaluation_metrics": final_eval_metrics_result, "log_directory": str(trainer.logger.log_dir)
+        "final_checkpoint_path": str(path_to_load_for_final_eval) if path_to_load_for_final_eval else None,
+        "final_evaluation_metrics": final_eval_metrics_result,
+        "log_directory": str(trainer.logger.log_dir),
+        "checkpoint_directory": checkpoint_dir_str,
+        "total_epochs_trained": trainer.current_epoch + 1
     }
+    
     try:
         with open(results_summary_path, "w", encoding="utf-8") as fp:
             class CustomEncoder(json.JSONEncoder):
@@ -313,22 +457,34 @@ def main(config: dict, log_dir: Path, cli_args: argparse.Namespace):
         logger.error(f"Could not serialize run summary to JSON: {e_json}.")
         with open(Path(trainer.logger.log_dir) / "training_run_summary.txt", 'w', encoding='utf-8') as f:
              f.write(str(summary_data))
+    
     logger.info(f"All results, logs, and checkpoints saved in: {trainer.logger.log_dir}")
+
 
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S", handlers=[logging.StreamHandler(sys.stdout)]
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[logging.StreamHandler(sys.stdout)]
     )
     parser = argparse.ArgumentParser(description="Train TSDiff model.")
     parser.add_argument("-c", "--config", type=str, required=True, help="Path to the YAML configuration file.")
     parser.add_argument("--out_dir", type=str, default="./lightning_runs_tsdiff", help="Base directory for logs and checkpoints.")
     args = parser.parse_args()
+    
     try:
-        with open(args.config, "r", encoding="utf-8") as fp: config_from_yaml = yaml.safe_load(fp)
-    except FileNotFoundError: logger.error(f"Config file not found: {args.config}"); sys.exit(1)
-    except yaml.YAMLError as e: logger.error(f"Error parsing YAML config {args.config}: {e}"); sys.exit(1)
-    except Exception as e: logger.error(f"Unexpected error reading config {args.config}: {e}"); sys.exit(1)
+        with open(args.config, "r", encoding="utf-8") as fp:
+            config_from_yaml = yaml.safe_load(fp)
+    except FileNotFoundError:
+        logger.error(f"Config file not found: {args.config}")
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        logger.error(f"Error parsing YAML config {args.config}: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error reading config {args.config}: {e}")
+        sys.exit(1)
     
     if "device" not in config_from_yaml:
         config_from_yaml["device"] = "cuda:0" if torch.cuda.is_available() else "cpu"

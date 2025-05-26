@@ -1,0 +1,449 @@
+PS D:\FDR_TS_PREDICT\unconditional-time-series-diffusion> python bin/train_model.py -c configs/fdr/train_CAS_250L.yaml --out_dir ./results/CAS_250L_run01
+[KeOps] Warning : Cuda libraries were not detected on the system ; using cpu only mode
+Falling back on slow Cauchy kernel. Install at least one of pykeops or the CUDA extension for efficiency.
+Falling back on slow Vandermonde kernel. Install pykeops for improved memory efficiency.
+2025-05-23 17:00:51 [INFO] __main__: Attempting to load dataset from: ./data/processed_fdr_interactive/CAS_origfreq
+2025-05-23 17:00:51 [INFO] __main__: Expected frequency from config: 250L
+2025-05-23 17:00:51 [INFO] __main__: Expected prediction length from config: 40
+Loading custom dataset from directory: data\processed_fdr_interactive\CAS_origfreq
+2025-05-23 17:00:51 [INFO] __main__: Dataset loaded. Metadata freq: 250L, Metadata pred_len: 40
+2025-05-23 17:00:51 [INFO] __main__: Creating TSDiff model instance...
+2025-05-23 17:00:51 [WARNING] uncond_ts_diff.model.diffusion._base: Frequency '250L' (parsed base name: 'L') is not in the list of directly supported base frequencies for automatic time feature generation by `time_features_from_frequency_str`. No calendar time features will be automatically added. Model will rely on lags and learned dynamics.
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\torch\nn\init.py:405: UserWarning: Initializing zero-element tensors is a no-op
+  warnings.warn("Initializing zero-element tensors is a no-op")
+2025-05-23 17:00:51 [INFO] __main__: TSDiff model created.
+2025-05-23 17:00:51 [INFO] __main__: Setting up validation using TSDiff's EvaluateCallback.
+2025-05-23 17:00:52 [INFO] __main__: Using last 46 series from training data for EvaluateCallback's val_dataset.
+2025-05-23 17:00:52 [INFO] __main__: EvaluateCallback added with 46 validation series.
+2025-05-23 17:00:52 [INFO] __main__: ModelCheckpoint will monitor default training metric: train_loss_epoch (mode: min)
+2025-05-23 17:00:52 [INFO] __main__: Checkpoints will be saved in: D:\FDR_TS_PREDICT\unconditional-time-series-diffusion\results\CAS_250L_run01\train_CAS_250L\checkpoints
+ModelCheckpoint(save_last=True, save_top_k=-1, monitor=None) will duplicate the last checkpoint saved.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\pytorch_lightning\trainer\connectors\logger_connector\logger_connector.py:67: UserWarning: Starting from v1.9.0, `tensorboardX` has been removed as a dependency of the `pytorch_lightning` package, due to potential conflicts with other packages in the ML ecosystem. For this reason, `logger=True` will use `CSVLogger` as the default logger, unless the `tensorboard` or `tensorboardX` packages are found. Please `pip install lightning[extra]` or one of them to enable TensorBoard support by default
+  warning_cache.warn(
+2025-05-23 17:00:53 [INFO] __main__: Starting training. Logging to results\CAS_250L_run01\lightning_logs\version_18
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\pytorch_lightning\trainer\configuration_validator.py:108: PossibleUserWarning: You defined a `validation_step` but have no `val_dataloader`. Skipping val loop.
+  rank_zero_warn(
+You are using a CUDA device ('NVIDIA GeForce RTX 4060 Laptop GPU') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+┏━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃   ┃ Name     ┃ Type            ┃ Params ┃
+┡━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ 0 │ scaler   │ MeanScaler      │      0 │
+│ 1 │ embedder │ FeatureEmbedder │      0 │
+│ 2 │ backbone │ BackboneModel   │  191 K │
+└───┴──────────┴─────────────────┴────────┘
+Trainable params: 191 K
+Non-trainable params: 0
+Total params: 191 K
+Total estimated model params size (MB): 0
+
+[Backup] Saved epoch 0 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_000.pth
+
+[Backup] Saved epoch 1 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_001.pth                                                  
+
+[Backup] Saved epoch 2 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_002.pth                                                  
+
+[Backup] Saved epoch 3 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_003.pth                                                  
+
+[Backup] Saved epoch 4 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_004.pth                                                  
+
+[Backup] Saved epoch 5 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_005.pth
+
+[Backup] Saved epoch 6 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_006.pth
+
+[Backup] Saved epoch 7 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_007.pth                                                  
+
+[Backup] Saved epoch 8 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_008.pth                                                  
+
+[Backup] Saved epoch 9 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_009.pth                                                  
+
+[Backup] Saved epoch 10 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_010.pth                                                 
+
+[Backup] Saved epoch 11 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_011.pth                                                 
+
+[Backup] Saved epoch 12 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_012.pth
+
+[Backup] Saved epoch 13 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_013.pth                                                 
+
+[Backup] Saved epoch 14 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_014.pth
+
+[Backup] Saved epoch 15 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_015.pth                                                 
+
+[Backup] Saved epoch 16 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_016.pth                                                 
+
+[Backup] Saved epoch 17 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_017.pth                                                 
+
+[Backup] Saved epoch 18 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_018.pth                                                 
+Epoch 19/29 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64/-- 0:00:02 • -:--:-- 28.00it/s loss: 1.4 v_num: 18 train_loss_step: 0.023
+                                                                                       train_loss_epoch: 11.314                                   
+2025-05-23 17:01:42 [INFO] uncond_ts_diff.model.callback: EvaluateCallback: Running evaluation at epoch 20
+2025-05-23 17:01:42 [INFO] uncond_ts_diff.model.callback: EvaluateCallback: Evaluating with main_model weights...
+Running evaluation: 0it [00:00, ?it/s]
+Epoch 19/29 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64/-- 0:00:02 • -:--:-- 28.00it/s loss: 1.4 v_num: 18 train_loss_step: 0.023
+                                                                                       train_loss_epoch: 11.314                                   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:00 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+Running evaluation: 46it [00:00, 344.14it/s]                                                                                                      
+                                                                                                                                                  
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\pandas\core\dtypes\astype.py:170: UserWarning: Warning: converting a masked element to nan.
+  return arr.astype(dtype, copy=True)
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\gluonts\evaluation\_base.py:513: RuntimeWarning: divide by zero encountered in             
+double_scalars
+  totals["NRMSE"] = totals["RMSE"] / totals["abs_target_mean"]
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\gluonts\evaluation\_base.py:514: RuntimeWarning: divide by zero encountered in             
+double_scalars
+  totals["ND"] = totals["abs_error"] / totals["abs_target_sum"]
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\gluonts\evaluation\_base.py:518: RuntimeWarning: divide by zero encountered in             
+double_scalars
+  totals[f"QuantileLoss[{quantile}]"] / totals["abs_target_sum"]
+Epoch 19/29 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64/-- 0:00:02 • -:--:-- 28.00it/s loss: 1.4 v_num: 18 train_loss_step: 0.023
+                                                                                       train_loss_epoch: 11.314                                   
+Running evaluation: 0it [00:00, ?it/s]
+Epoch 19/29 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64/-- 0:00:02 • -:--:-- 28.00it/s loss: 1.4 v_num: 18 train_loss_step: 0.023
+                                                                                       train_loss_epoch: 11.314                                   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:45 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:02:46 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+Running evaluation: 116it [00:00, 275.42it/s]                                                                                                     
+                                                                                                                                                  
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\pandas\core\dtypes\astype.py:170: UserWarning: Warning: converting a masked element to nan.
+  return arr.astype(dtype, copy=True)
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\gluonts\evaluation\_base.py:513: RuntimeWarning: divide by zero encountered in
+double_scalars
+  totals["NRMSE"] = totals["RMSE"] / totals["abs_target_mean"]
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\gluonts\evaluation\_base.py:514: RuntimeWarning: divide by zero encountered in             
+double_scalars
+  totals["ND"] = totals["abs_error"] / totals["abs_target_sum"]
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\gluonts\evaluation\_base.py:518: RuntimeWarning: divide by zero encountered in             
+double_scalars
+  totals[f"QuantileLoss[{quantile}]"] / totals["abs_target_sum"]
+Epoch 19/29 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64/-- 0:00:02 • -:--:-- 28.00it/s loss: 1.4 v_num: 18 train_loss_step: 0.023
+                                                                                       train_loss_epoch: 11.314                                   
+
+[Backup] Saved epoch 19 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_019.pth
+
+[Backup] Saved epoch 20 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_020.pth
+
+[Backup] Saved epoch 21 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_021.pth                                                 
+
+[Backup] Saved epoch 22 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_022.pth
+
+[Backup] Saved epoch 23 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_023.pth
+
+[Backup] Saved epoch 24 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_024.pth
+
+[Backup] Saved epoch 25 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_025.pth                                                 
+
+[Backup] Saved epoch 26 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_026.pth                                                 
+
+[Backup] Saved epoch 27 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_027.pth                                                 
+
+[Backup] Saved epoch 28 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_028.pth                                                 
+
+[Backup] Saved epoch 29 to results\CAS_250L_run01\train_CAS_250L\checkpoints\backup_epoch_029.pth
+Epoch 29/29 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64/-- 0:00:02 • -:--:-- 22.28it/s loss: 0.503 v_num: 18 train_loss_step: 0.02
+                                                                                       train_loss_epoch: 0.449 val_MSE_main_model: 0.0
+Epoch 29/29 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64/-- 0:00:03 • -:--:-- 22.28it/s loss: 0.503 v_num: 18 train_loss_step: 0.02
+                                                                                       train_loss_epoch: 0.646 val_MSE_main_model: 0.0
+                                                                                       val_CRPS_main_model: inf val_ND_main_model: inf
+                                                                                       val_NRMSE_main_model: inf
+2025-05-23 17:03:13 [INFO] __main__: Training completed successfully!
+2025-05-23 17:03:13 [INFO] __main__: Manually saved final checkpoint to: D:\FDR_TS_PREDICT\unconditional-time-series-diffusion\results\CAS_250L_run01\train_CAS_250L\checkpoints\final_manual.ckpt
+2025-05-23 17:03:13 [INFO] __main__: Saved model weights to: D:\FDR_TS_PREDICT\unconditional-time-series-diffusion\results\CAS_250L_run01\train_CAS_250L\checkpoints\model_weights.pth
+2025-05-23 17:03:13 [INFO] __main__: Found best checkpoint from callback: D:\FDR_TS_PREDICT\unconditional-time-series-diffusion\results\CAS_250L_run01\train_CAS_250L\checkpoints\epoch=epoch=029-loss=train_loss_epoch=0.6460.ckpt
+2025-05-23 17:03:13 [INFO] __main__: Loading model from D:\FDR_TS_PREDICT\unconditional-time-series-diffusion\results\CAS_250L_run01\train_CAS_250L\checkpoints\epoch=epoch=029-loss=train_loss_epoch=0.6460.ckpt for final evaluation.
+2025-05-23 17:03:13 [INFO] __main__: Creating TSDiff model instance...
+2025-05-23 17:03:13 [WARNING] uncond_ts_diff.model.diffusion._base: Frequency '250L' (parsed base name: 'L') is not in the list of directly supported base frequencies for automatic time feature generation by `time_features_from_frequency_str`. No calendar time features will be automatically added. Model will rely on lags and learned dynamics.
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\torch\nn\init.py:405: UserWarning: Initializing zero-element tensors is a no-op
+  warnings.warn("Initializing zero-element tensors is a no-op")
+2025-05-23 17:03:13 [INFO] __main__: TSDiff model created.
+2025-05-23 17:03:13 [INFO] __main__: Running final evaluation with 100 samples.
+2025-05-23 17:03:13 [INFO] __main__: Generating forecasts for final evaluation...
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████| 116/116 [05:10<00:00,  2.67s/it]
+Running evaluation: 0it [00:00, ?it/s]2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+Running evaluation: 29it [00:00, 284.29it/s]2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+Running evaluation: 58it [00:00, 275.86it/s]2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+Running evaluation: 86it [00:00, 275.85it/s]2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.   
+Running evaluation: 115it [00:00, 280.31it/s]2025-05-23 17:08:24 [WARNING] gluonts.time_feature.seasonality: Multiple 250 does not divide base seasonality 1. Falling back to seasonality 1.
+Running evaluation: 116it [00:00, 278.93it/s]
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\pandas\core\dtypes\astype.py:170: UserWarning: Warning: converting a masked element to nan.
+  return arr.astype(dtype, copy=True)
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\gluonts\evaluation\_base.py:513: RuntimeWarning: divide by zero encountered in double_scalars
+  totals["NRMSE"] = totals["RMSE"] / totals["abs_target_mean"]
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\gluonts\evaluation\_base.py:514: RuntimeWarning: divide by zero encountered in double_scalars
+  totals["ND"] = totals["abs_error"] / totals["abs_target_sum"]
+C:\Users\26727\anaconda3\envs\tsdiff\lib\site-packages\gluonts\evaluation\_base.py:518: RuntimeWarning: divide by zero encountered in double_scalars
+  totals[f"QuantileLoss[{quantile}]"] / totals["abs_target_sum"]
+2025-05-23 17:08:24 [INFO] __main__: Final Evaluation Metrics: {'MSE': 1.71198987646283e-22, 'mean_wQuantileLoss': inf, 'ND': inf, 'NRMSE': inf}  
+2025-05-23 17:08:24 [INFO] __main__: Training run summary saved to results\CAS_250L_run01\lightning_logs\version_18\training_run_summary.json     
+2025-05-23 17:08:24 [INFO] __main__: All results, logs, and checkpoints saved in: results\CAS_250L_run01\lightning_logs\version_18
