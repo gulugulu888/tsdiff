@@ -129,11 +129,10 @@ def load_trained_model(config: dict, ckpt_path: Path) -> TSDiff:
         import traceback
         logger.error(traceback.format_exc())
         raise
-
 def load_jsonl_test_dataset(dataset_path: Path, freq: str, prediction_length: int) -> ListDataset:
     logger.info(f"Loading test dataset from: {dataset_path}")
     if not dataset_path.exists():
-        logger.error(f"Test data file not found: {dataset_path}") # 添加日志记录
+        logger.error(f"Test data file not found: {dataset_path}")
         raise FileNotFoundError(f"Test data file not found: {dataset_path}")
 
     data_entries = []
@@ -142,18 +141,15 @@ def load_jsonl_test_dataset(dataset_path: Path, freq: str, prediction_length: in
             try:
                 entry = json.loads(line)
                 
-                # --- 修改开始 ---
+                # 保持start字段为字符串格式，让GluonTS自己处理
+                # 不在这里转换为Period对象
                 if not isinstance(entry[FieldName.START], str):
                     entry[FieldName.START] = str(entry[FieldName.START])
                 
-                # 先将字符串转换为 Pandas Timestamp 对象
-                timestamp_obj = pd.Timestamp(entry[FieldName.START])
-                # 然后用 Timestamp 对象和频率创建 Period 对象
-                entry[FieldName.START] = pd.Period(timestamp_obj, freq=freq)
-                # --- 修改结束 ---
-                                
+                # 确保TARGET是numpy数组
                 entry[FieldName.TARGET] = np.array(entry[FieldName.TARGET], dtype=np.float32)
 
+                # 处理其他特征字段
                 if FieldName.FEAT_DYNAMIC_REAL in entry:
                     entry[FieldName.FEAT_DYNAMIC_REAL] = np.array(entry[FieldName.FEAT_DYNAMIC_REAL], dtype=np.float32)
                 if FieldName.FEAT_STATIC_CAT in entry:
@@ -163,14 +159,27 @@ def load_jsonl_test_dataset(dataset_path: Path, freq: str, prediction_length: in
 
                 data_entries.append(entry)
             except Exception as e:
-                logger.error(f"Error parsing line {line_idx+1} in {dataset_path} for start '{entry.get(FieldName.START, 'N/A')}': {e}. Line content: '{line.strip()}'")
-                # 你可以在这里决定是否因为单行错误而跳过，或者如果错误太严重则抛出异常
+                logger.error(f"Error parsing line {line_idx+1} in {dataset_path}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 continue 
 
+    logger.info(f"Successfully loaded {len(data_entries)} entries from {dataset_path}")
+    
     if not data_entries:
-        logger.warning(f"No data entries successfully loaded from {dataset_path}. Check parsing errors above if any.") # 修改日志信息
+        logger.error(f"No data entries successfully loaded from {dataset_path}")
+        return None
 
-    return ListDataset(data_entries, freq=freq)
+    # 创建ListDataset时使用freq参数
+    try:
+        dataset = ListDataset(data_entries, freq=freq)
+        logger.info(f"Created ListDataset with {len(data_entries)} entries and frequency '{freq}'")
+        return dataset
+    except Exception as e:
+        logger.error(f"Error creating ListDataset: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
 
 def generate_forecasts_and_evaluate(
     model: TSDiff,
@@ -229,7 +238,7 @@ def generate_forecasts_and_evaluate(
     logger.info("Calculating evaluation metrics...")
     # Define a comprehensive set of quantiles
     eval_quantiles = [0.01, 0.05, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 0.95, 0.99]
-    evaluator = Evaluator(quantiles=eval_quantiles, MSTL_periods=[]) # MSTL can be slow, consider disabling if not needed or data is not seasonal
+    evaluator = Evaluator(quantiles=eval_quantiles) # MSTL can be slow, consider disabling if not needed or data is not seasonal
 
     agg_metrics, item_metrics_df = evaluator(iter(ground_truth_series_dfs), iter(forecast_objects))
 
@@ -363,12 +372,14 @@ def plot_error_distribution(
         forecast = forecast_objects[i]
         item_id = forecast.item_id if hasattr(forecast, 'item_id') else f"series_{i+1}"
 
-        forecast_start_dt = pd.Timestamp(forecast.start_date.to_timestamp(how='S'))
+        # 获取预测长度
         pred_len = config["prediction_length"]
-        forecast_index = pd.date_range(start=forecast_start_dt, periods=pred_len, freq=config["freq"])
-
-        actual_values_prediction_window = ts_df.iloc[:,0].loc[forecast_index]
-
+        
+        # 直接获取真实值的最后 pred_len 个点，而不是尝试用 forecast_index 索引
+        # ground truth 已经包含了完整的序列（context + prediction）
+        actual_values_prediction_window = ts_df.iloc[-pred_len:, 0].values
+        
+        # 获取预测值
         if isinstance(forecast, QuantileForecast) and '0.5' in forecast.forecast_keys:
             median_forecast_vals = forecast.quantile('0.5')
         elif hasattr(forecast, 'mean'):
@@ -384,7 +395,7 @@ def plot_error_distribution(
             logger.warning(f"Length mismatch for series {item_id}. Actuals: {len(actual_values_prediction_window)}, Forecast: {len(median_forecast_vals)}. Skipping.")
             continue
 
-        residuals = actual_values_prediction_window.values - median_forecast_vals
+        residuals = actual_values_prediction_window - median_forecast_vals
         all_residuals.extend(residuals)
 
         plt.figure(figsize=(12, 6))
@@ -411,7 +422,7 @@ def plot_error_distribution(
         plt.savefig(agg_plot_save_path, dpi=150)
         plt.close()
         logger.info(f"Saved aggregated error distribution plot to {agg_plot_save_path}")
-
+        
 def plot_item_wise_metrics_distribution(
     item_metrics_df: pd.DataFrame,
     output_dir: Path
@@ -588,10 +599,22 @@ def main():
     model = load_trained_model(config, Path(args.ckpt_path))
 
     test_dataset = load_jsonl_test_dataset(Path(args.test_data_path), config["freq"], config["prediction_length"])
-    if not test_dataset or not hasattr(test_dataset, 'list_data') or not test_dataset.list_data :
-        logger.error("Test dataset is empty or could not be loaded. Exiting.")
+    # 改进的空数据集检查
+    if test_dataset is None:
+        logger.error("Test dataset is None. Exiting.")
         return
-    num_total_series = len(test_dataset.list_data)
+    
+    # 检查数据集是否真的有数据
+    try:
+        test_dataset_list = list(test_dataset)
+        num_total_series = len(test_dataset_list)
+        logger.info(f"Test dataset contains {num_total_series} time series")
+        if num_total_series == 0:
+            logger.error("Test dataset is empty. Exiting.")
+            return
+    except Exception as e:
+        logger.error(f"Error accessing test dataset: {e}")
+        return
 
 
     forecast_objects, agg_metrics, ground_truth_dfs, item_metrics_df = generate_forecasts_and_evaluate(
