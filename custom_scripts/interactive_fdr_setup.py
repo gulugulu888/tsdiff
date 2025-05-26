@@ -3,9 +3,12 @@ import argparse
 from pathlib import Path
 import json
 import sys
-from typing import Any, Dict, List 
+from typing import Any, Dict, List, Optional, Tuple, Set # Added Set
 import numpy as np 
+import pandas as pd 
 import warnings
+
+import scipy
 
 # Suppress specific Pandas warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pandas.core.resample")
@@ -16,7 +19,7 @@ sys.path.append(str(project_root))
 try:
     import yaml 
 except ImportError:
-    print("Warning: PyYAML is not installed. JSON config file is preferred for data_preprocessing_interactive_config if YAML is not available.")
+    print("Warning: PyYAML is not installed. JSON config file is preferred if YAML is not available.")
     yaml = None
 
 try:
@@ -27,16 +30,19 @@ try:
         get_user_decision_for_variable,
         process_mat_file_with_decisions,
         save_gluonts_jsonl,
-        ask_yes_no  # <--- 确保 ask_yes_no 被导入
+        ask_yes_no,
+        parse_fdr_timestamp_from_mat, 
+        get_series_from_mat,          
+        determine_inflight_window_from_flight_indicator 
     )
 except ImportError as e:
     print(f"Error importing from src.fdr_project.data_loader: {e}")
-    print("Please ensure that 'src/fdr_project/data_loader.py' exists and is correctly structured with all necessary functions, including 'ask_yes_no'.")
+    print("Please ensure that 'src/fdr_project/data_loader.py' is correctly structured with all necessary functions.")
     sys.exit(1)
 
 
 def main_interactive_setup():
-    parser = argparse.ArgumentParser(description="Interactively set up FDR data processing for a target variable.")
+    parser = argparse.ArgumentParser(description="Interactively set up FDR data processing for a target variable, using a flight indicator for windowing.")
     parser.add_argument(
         "--config", 
         type=str, 
@@ -55,7 +61,7 @@ def main_interactive_setup():
         with open(config_file_path, 'r', encoding='utf-8') as f:
             if config_file_path.suffix.lower() in [".yaml", ".yml"]:
                 if yaml is None:
-                    print("Error: PyYAML not installed, cannot load .yaml config. Please use .json or install PyYAML (`pip install pyyaml`).")
+                    print("Error: PyYAML not installed, cannot load .yaml config. Use .json or install PyYAML (`pip install pyyaml`).")
                     sys.exit(1)
                 config_data = yaml.safe_load(f)
             elif config_file_path.suffix.lower() == ".json":
@@ -69,7 +75,7 @@ def main_interactive_setup():
 
     fdr_mat_dir_relative = config_data.get("fdr_mat_source_path")
     output_base_dir_relative = config_data.get("output_base_directory")
-    sample_files_count = config_data.get("sample_files_for_analysis", 3)
+    sample_files_count = config_data.get("sample_files_for_analysis", 5)
     min_len_factor = config_data.get("min_len_factor_for_filtering", 1.5)
     test_split_ratio = config_data.get("test_split_ratio", 0.2)
 
@@ -81,7 +87,7 @@ def main_interactive_setup():
     output_base_dir = project_root / output_base_dir_relative
     output_base_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"--- FDR Data Interactive Setup ---")
+    print(f"--- FDR Data Interactive Setup (with Flight Window Filtering) ---")
     print(f"Using MAT file source: {fdr_data_root}")
     print(f"Processed data will be saved under: {output_base_dir}")
 
@@ -95,63 +101,191 @@ def main_interactive_setup():
         print("No suitable time series variables found in the sample MAT file. Exiting.")
         return
 
-    print("\nAvailable time series variables found in sample file:")
-    for i, var_name in enumerate(available_variables):
-        print(f"  {i+1}. {var_name}")
+    # --- Flight Indicator Variable Setup ---
+    print("\n--- Flight Phase Indicator Setup ---")
+    default_flight_indicator_var = "CAS"
+    flight_indicator_var_name = default_flight_indicator_var # Initialize with default
 
-    target_variable = ""
+    if default_flight_indicator_var not in available_variables:
+        print(f"Warning: Default flight indicator '{default_flight_indicator_var}' not found among discovered variables: {available_variables}")
+        print("Available variables:")
+        for i, var_name_option in enumerate(available_variables): print(f"  {i+1}. {var_name_option}")
+        while True:
+            try:
+                choice_idx_str = input(f"Enter the number of the variable to use as flight phase indicator (or type 'skip' to process without flight windowing): ").strip()
+                if choice_idx_str.lower() == 'skip':
+                    flight_indicator_var_name = None; break
+                if not choice_idx_str: continue
+                choice_idx = int(choice_idx_str) - 1
+                if 0 <= choice_idx < len(available_variables):
+                    flight_indicator_var_name = available_variables[choice_idx]; break
+                else: print("  Invalid choice.")
+            except ValueError: print("  Invalid input. Please enter a number or 'skip'.")
+    else:
+        if not ask_yes_no(f"Use '{default_flight_indicator_var}' as the flight phase indicator? (y/n): "):
+            print("Available variables:")
+            for i, var_name_option in enumerate(available_variables): print(f"  {i+1}. {var_name_option}")
+            while True:
+                try:
+                    choice_idx_str = input(f"Enter the number of the variable for flight phase (or type 'skip' to process without specific flight windowing): ").strip()
+                    if choice_idx_str.lower() == 'skip':
+                        flight_indicator_var_name = None; break
+                    if not choice_idx_str: continue
+                    choice_idx = int(choice_idx_str) - 1
+                    if 0 <= choice_idx < len(available_variables):
+                        flight_indicator_var_name = available_variables[choice_idx]; break
+                    else: print("  Invalid choice.")
+                except ValueError: print("  Invalid input. Please enter a number or 'skip'.")
+    
+    flight_indicator_processing_decisions = None
+    flight_indicator_ground_threshold = 0.0
+
+    if flight_indicator_var_name:
+        print(f"Using '{flight_indicator_var_name}' for flight phase determination.")
+        indicator_analysis = analyze_variable_across_files(mat_files, flight_indicator_var_name, sample_files_count)
+        if indicator_analysis.get("num_files_effectively_analyzed", 0) == 0:
+            print(f"Critical: Flight indicator '{flight_indicator_var_name}' could not be analyzed. Processing will continue without indicator-based windowing.")
+            flight_indicator_var_name = None # Disable indicator if it cannot be analyzed
+        else:
+            flight_indicator_processing_decisions = get_user_decision_for_variable(
+                indicator_analysis, 
+                is_flight_indicator_setup=True
+            )
+            if not flight_indicator_processing_decisions.get("process_this_variable", False):
+                print(f"Flight indicator '{flight_indicator_var_name}' was marked not to be processed. Proceeding without indicator-based windowing.")
+                flight_indicator_var_name = None
+            else:
+                while True: # Get threshold for the chosen indicator
+                    try:
+                        threshold_units = indicator_analysis.get("units", ["unknown units"])[0] if indicator_analysis.get("units") else "unknown units"
+                        threshold_str = input(f"Enter the ground threshold for '{flight_indicator_var_name}' (in {threshold_units}, e.g., for CAS in knots, try 30-50) to define 'in-flight': ").strip()
+                        flight_indicator_ground_threshold = float(threshold_str)
+                        if flight_indicator_ground_threshold < 0: raise ValueError("Threshold must be non-negative.")
+                        break
+                    except ValueError as e: print(f"  Invalid input: {e}")
+    else:
+        print("Proceeding without specific flight window filtering based on an indicator variable.")
+
+    # --- Pass 1: Determine In-flight Windows (if indicator is chosen and valid) ---
+    flight_windows_map: Dict[Path, Optional[Tuple[pd.Timestamp, pd.Timestamp]]] = {}
+    num_files_with_flight_window = 0
+
+    if flight_indicator_var_name and flight_indicator_processing_decisions:
+        print(f"\n--- Determining In-Flight Windows using '{flight_indicator_var_name}' (threshold: {flight_indicator_ground_threshold}) ---")
+        processed_mat_count_pass1 = 0
+        for mat_file in mat_files:
+            processed_mat_count_pass1 += 1
+            if processed_mat_count_pass1 % 50 == 0 or processed_mat_count_pass1 == len(mat_files):
+                 print(f"  Determining flight window for MAT file {processed_mat_count_pass1}/{len(mat_files)}...")
+            
+            mat_data_struct = scipy.io.loadmat(mat_file, simplify_cells=True)
+            mat_start_ts = parse_fdr_timestamp_from_mat(mat_data_struct, mat_file.name)
+            
+            forced_hz_for_indicator = flight_indicator_processing_decisions.get("determined_original_hz")
+
+            indicator_series_tuple = get_series_from_mat(
+                mat_data_struct, 
+                flight_indicator_var_name, 
+                mat_start_ts, 
+                mat_file,
+                forced_original_hz=forced_hz_for_indicator
+            )
+            
+            if indicator_series_tuple is None:
+                flight_windows_map[mat_file] = None; continue
+            
+            indicator_series_orig_rate, indicator_actual_orig_hz = indicator_series_tuple
+            
+            series_for_window_detection = indicator_series_orig_rate
+            if flight_indicator_processing_decisions.get("resample_enabled", False):
+                target_hz_indicator_window = flight_indicator_processing_decisions["target_hz"]
+                target_freq_indicator_window = flight_indicator_processing_decisions["final_pandas_freq"]
+                
+                if abs(indicator_actual_orig_hz - target_hz_indicator_window) > 1e-6:
+                    resampled_series: Optional[pd.Series] = None
+                    if indicator_actual_orig_hz > target_hz_indicator_window: 
+                        agg_method = flight_indicator_processing_decisions.get("resample_agg_method", "mean")
+                        resampled_series = indicator_series_orig_rate.resample(target_freq_indicator_window).agg(agg_method)
+                    else: 
+                        fill_method = flight_indicator_processing_decisions.get("resample_fill_method", "ffill")
+                        if fill_method == "interpolate":
+                            interp_method = flight_indicator_processing_decisions.get("interpolate_method", "linear")
+                            resampled_series = indicator_series_orig_rate.resample(target_freq_indicator_window).interpolate(method=interp_method)
+                        else:
+                             resampled_series = indicator_series_orig_rate.resample(target_freq_indicator_window).fillna(method=fill_method)
+                    if resampled_series is not None:
+                        series_for_window_detection = resampled_series.dropna()
+            
+            if series_for_window_detection.empty:
+                flight_windows_map[mat_file] = None; continue
+                
+            if series_for_window_detection.isnull().any():
+                nan_handle_method_indicator = flight_indicator_processing_decisions.get("nan_handling_method", "interpolate_linear")
+                if nan_handle_method_indicator == "interpolate_linear":
+                    series_for_window_detection = series_for_window_detection.interpolate(method='linear', limit_direction='both').bfill().ffill()
+                elif nan_handle_method_indicator == "ffill_then_bfill":
+                    series_for_window_detection = series_for_window_detection.ffill().bfill()
+                elif nan_handle_method_indicator == "to_zero": # Should be rare for CAS/indicator
+                    series_for_window_detection = series_for_window_detection.fillna(0.0)
+                series_for_window_detection = series_for_window_detection.dropna()
+
+            if series_for_window_detection.empty:
+                flight_windows_map[mat_file] = None; continue
+
+            flight_window = determine_inflight_window_from_flight_indicator(series_for_window_detection, flight_indicator_ground_threshold)
+            flight_windows_map[mat_file] = flight_window
+            if flight_window:
+                num_files_with_flight_window +=1
+        
+        print(f"Flight windows determined for {num_files_with_flight_window}/{len(mat_files)} MAT files using '{flight_indicator_var_name}'.")
+        if num_files_with_flight_window == 0 and len(mat_files) > 0:
+            print(f"Warning: No flight windows could be determined from any MAT file using '{flight_indicator_var_name}'.")
+            if not ask_yes_no("Do you want to proceed with processing the target variable on the full data (no flight window filtering)? (y/n)"):
+                print("Exiting data setup.")
+                return
+            flight_indicator_var_name = None # Disable for subsequent steps
+            for mat_file in mat_files: flight_windows_map[mat_file] = None # Ensure all are None
+    else: # User skipped flight indicator or indicator setup failed and they chose to skip
+        print("Proceeding without specific flight window filtering based on an indicator variable.")
+        for mat_file in mat_files: flight_windows_map[mat_file] = None
+
+
+    # --- Select Target Variable for Final Dataset ---
+    print("\n--- Target Variable Selection for Final Dataset ---")
+    print("Available time series variables:")
+    for i, var_name in enumerate(available_variables): print(f"  {i+1}. {var_name}")
+    
+    target_variable_for_dataset = ""
     while True:
         try:
-            choice_idx_str = input("Enter the number of the variable you want to process: ").strip()
+            choice_idx_str = input("Enter the number of the variable you want to process for the dataset: ").strip()
             if not choice_idx_str: continue
             choice_idx = int(choice_idx_str) - 1
             if 0 <= choice_idx < len(available_variables):
-                target_variable = available_variables[choice_idx]
-                break
-            else: print("  Invalid choice. Please enter a number from the list.")
+                target_variable_for_dataset = available_variables[choice_idx]; break
+            else: print("  Invalid choice.")
         except ValueError: print("  Invalid input. Please enter a number.")
-    print(f"You selected variable: '{target_variable}'")
+    print(f"You selected variable: '{target_variable_for_dataset}' for the final dataset.")
 
-    var_analysis_results = analyze_variable_across_files(mat_files, target_variable, sample_files_count)
-    
-    if var_analysis_results.get("num_files_effectively_analyzed", 0) == 0 :
-        print(f"Variable '{target_variable}' was not found or analyzable in any sample files. Cannot proceed.")
+    target_var_analysis_results = analyze_variable_across_files(mat_files, target_variable_for_dataset, sample_files_count)
+    if target_var_analysis_results.get("num_files_effectively_analyzed", 0) == 0:
+        print(f"Target variable '{target_variable_for_dataset}' was not found/analyzable in sample files. Cannot proceed.")
         return
-    # rates_found_hz check is implicitly handled by get_user_decision_for_variable
 
-    if target_variable == "CAS":
-        print(f"\n  --- Specific Note for Variable: '{target_variable}' ---")
-        cas_dtype_list = var_analysis_results.get("dtypes_found_in_samples", [])
-        is_uint8 = any('uint8' in dt.lower() for dt in cas_dtype_list)
-        all_samples_zero = var_analysis_results.get("all_zero_samples_count", 0) == var_analysis_results.get("num_files_effectively_analyzed", 0) and var_analysis_results.get("num_files_effectively_analyzed",0) > 0
-
-        if is_uint8:
-            print(f"    WARNING: '{target_variable}' is stored as uint8 in some sample files.")
-            if all_samples_zero:
-                 print(f"    CRITICAL WARNING: '{target_variable}' (uint8) was ALL ZEROS in all {var_analysis_results.get('num_files_effectively_analyzed',0)} sample file(s) checked where it was uint8. "
-                       f"It is highly unlikely to be useful for prediction if this pattern holds for all uint8 CAS files.")
-                 if not ask_yes_no(f"    '{target_variable}' (when uint8) appears non-informative in samples. Do you REALLY want to proceed with processing this variable (uint8 instances might be skipped)?"):
-                    print(f"Skipping '{target_variable}' due to data quality concerns regarding uint8 instances.")
-                    return
-            else: # uint8 but not all zeros in sample
-                print(f"             The processing script will attempt to convert it to float32.")
-                print(f"             It will also skip individual files if this variable's data within that file (when uint8) is mostly zeros.")
-                if not ask_yes_no(f"    Knowing '{target_variable}' is sometimes uint8 and might be filtered if zero-heavy, do you still want to proceed?"):
-                    print(f"Skipping '{target_variable}' based on user decision due to uint8 type concerns.")
-                    return
-    
-    user_decisions = get_user_decision_for_variable(var_analysis_results)
-
-    if not user_decisions.get("process_this_variable", True):
-        print(f"Skipping processing for variable '{target_variable}' based on user decision.")
+    user_decisions_for_target_var = get_user_decision_for_variable(
+        target_var_analysis_results, 
+        is_flight_indicator_setup=False, 
+        target_var_selected_by_user=target_variable_for_dataset
+    )
+    if not user_decisions_for_target_var.get("process_this_variable", True):
+        print(f"Skipping processing for variable '{target_variable_for_dataset}' based on user decision.")
         return
-    
-    print("\n--- Model Configuration (for filtering sequences) ---")
+
+    print("\n--- Model Configuration (for filtering sequences by length) ---")
     model_context_length = 0
     while True:
         try:
-            context_len_str = input(f"Enter the intended context_length for TSDiff model training with '{target_variable}': ").strip()
-            if not context_len_str: continue
+            context_len_str = input(f"Enter the intended context_length for TSDiff model training with '{target_variable_for_dataset}': ").strip()
             model_context_length = int(context_len_str)
             if model_context_length <= 0: raise ValueError("Context length must be positive.")
             break
@@ -160,108 +294,160 @@ def main_interactive_setup():
     model_prediction_length = 0
     while True:
         try:
-            pred_len_str = input(f"Enter the intended prediction_length for TSDiff model training with '{target_variable}': ").strip()
-            if not pred_len_str: continue
+            pred_len_str = input(f"Enter the intended prediction_length for TSDiff model training with '{target_variable_for_dataset}': ").strip()
             model_prediction_length = int(pred_len_str)
             if model_prediction_length <= 0: raise ValueError("Prediction length must be positive.")
             break
         except ValueError as e: print(f"  Invalid input: {e}")
 
     min_required_length_for_series = int((model_context_length + model_prediction_length) * min_len_factor)
-    print(f"Sequences for '{target_variable}' shorter than {min_required_length_for_series} samples (after any processing) will be skipped.")
+    print(f"Sequences for '{target_variable_for_dataset}' shorter than {min_required_length_for_series} samples (after all processing) will be skipped.")
 
-    print(f"\n--- Processing all MAT files for '{target_variable}' using your decisions ---")
-    all_final_series: List[Dict[str, Any]] = []
+    # --- Pass 2: Process Target Variable using Flight Windows ---
+    processing_context_message = f"using flight windows from '{flight_indicator_var_name}'" if flight_indicator_var_name else "on full data (no indicator-based windowing)"
+    print(f"\n--- Processing all MAT files for '{target_variable_for_dataset}' {processing_context_message} ---")
     
+    all_final_series: List[Dict[str, Any]] = []
+    processed_mat_count_main = 0
+    skipped_due_no_flight_window_main = 0
+
     for mat_file in mat_files:
+        processed_mat_count_main += 1
+        if processed_mat_count_main % 20 == 0 or processed_mat_count_main == len(mat_files):
+             print(f"  Processing MAT file {processed_mat_count_main}/{len(mat_files)} for '{target_variable_for_dataset}'...")
+        
+        current_flight_window_for_file = flight_windows_map.get(mat_file) # Will be None if flight_indicator_var_name is None
+        
+        if flight_indicator_var_name and current_flight_window_for_file is None:
+            skipped_due_no_flight_window_main +=1
+            continue # Skip this file for the target var if indicator was used but no window found
+            
         series_data = process_mat_file_with_decisions(
-            mat_file,
-            target_variable,
-            user_decisions, 
-            min_required_length_for_series
+            mat_file_path=mat_file,
+            target_variable_name_to_process=target_variable_for_dataset,
+            processing_decisions_for_target_var=user_decisions_for_target_var,
+            min_length_after_processing=min_required_length_for_series,
+            flight_window_abs_timestamps=current_flight_window_for_file 
         )
         if series_data:
             all_final_series.append(series_data)
     
+    if flight_indicator_var_name:
+        print(f"Skipped {skipped_due_no_flight_window_main} MAT files for '{target_variable_for_dataset}' because no valid flight window was found from '{flight_indicator_var_name}'.")
+    
     if not all_final_series:
-        print(f"No series for '{target_variable}' met the criteria after processing all files. No data saved.")
+        print(f"No series for '{target_variable_for_dataset}' met the criteria after processing. No data saved.")
         return
 
-    freq_suffix = str(user_decisions['target_hz']) + 'hz' if user_decisions.get('resample_enabled', False) else 'origfreq'
-    variable_specific_output_dir = output_base_dir / f"{target_variable.replace('.', '_')}_{freq_suffix}"
+    # --- Output Naming and Saving ---
+    target_var_freq_suffix = str(user_decisions_for_target_var['target_hz']) + 'Hz' \
+        if user_decisions_for_target_var.get('resample_enabled', False) else 'origrate'
+    target_var_freq_suffix = target_var_freq_suffix.replace(".","p") # make it filename friendly
+    
+    output_dir_name_parts = [target_variable_for_dataset.replace('.', '_'), target_var_freq_suffix]
+    if flight_indicator_var_name and flight_indicator_processing_decisions:
+        indicator_thresh_info = str(flight_indicator_ground_threshold).replace('.','p') + "units" # Using generic units
+        indicator_name_cleaned = flight_indicator_var_name.replace('.','_')
+        output_dir_name_parts.append(f"filtBy{indicator_name_cleaned}{indicator_thresh_info}")
+    
+    variable_specific_output_dir = output_base_dir / "_".join(output_dir_name_parts)
     variable_specific_output_dir.mkdir(parents=True, exist_ok=True)
 
     num_total = len(all_final_series)
     num_test = int(num_total * test_split_ratio)
     num_train = num_total - num_test
+    if num_train == 0 and num_total > 0: # Ensure train is not empty if total is not
+        if num_total == 1: num_train = 1; num_test = 0
+        else: # if multiple, but num_train became 0, adjust
+            num_train = num_total - num_test
+            if num_train <=0 and num_total > 0 : # if still 0, put at least one in train
+                num_train = 1
+                num_test = num_total -1
+
+
+    if num_train == 0 and num_test == 0 and num_total > 0: # Should not happen if logic above is correct
+         print("Warning: Train/Test split resulted in zero samples for both. Putting all in train.")
+         num_train = num_total
+    elif num_total == 0:
+        print("No data to save after train/test split. Exiting")
+        return
 
     train_data = all_final_series[:num_train]
-    test_data = all_final_series[num_train:]
+    test_data = all_final_series[num_train:] # This could be empty if num_train took all
+    
+    final_gluonts_freq_for_target = user_decisions_for_target_var["final_pandas_freq"]
 
-    final_dataset_frequency_for_gluonts = user_decisions["final_pandas_freq"]
-
-    print(f"\nTotal '{target_variable}' series successfully processed and filtered: {num_total}")
+    print(f"\nTotal '{target_variable_for_dataset}' series successfully processed {processing_context_message}: {num_total}")
     print(f"  Training series: {len(train_data)}")
     print(f"  Test series: {len(test_data)}")
-    print(f"  Final dataset frequency for GluonTS config: {final_dataset_frequency_for_gluonts}")
+    print(f"  Final GluonTS frequency for '{target_variable_for_dataset}': {final_gluonts_freq_for_target}")
 
     save_gluonts_jsonl(train_data, variable_specific_output_dir / "train.jsonl")
     save_gluonts_jsonl(test_data, variable_specific_output_dir / "test.jsonl")
 
-    run_configuration_summary = {
-        "input_script_config_file": str(config_file_path.relative_to(project_root) if hasattr(config_file_path, "is_relative_to") and config_file_path.is_relative_to(project_root) else str(config_file_path.resolve())),
-        "data_source": {
-            "fdr_mat_directory": str(fdr_data_root.relative_to(project_root) if hasattr(fdr_data_root, "is_relative_to") and fdr_data_root.is_relative_to(project_root) else str(fdr_data_root.resolve())),
-            "target_variable_selected": target_variable,
-            "num_mat_files_scanned": len(mat_files)
+    # --- Save Run Summary and Metadata ---
+    run_summary = {
+        "config_file_used": str(config_file_path.resolve()),
+        "fdr_mat_source_path": str(fdr_data_root.resolve()),
+        "output_base_directory": str(output_base_dir.resolve()),
+        "flight_phase_determination": {
+            "indicator_variable": flight_indicator_var_name if flight_indicator_var_name else "N/A",
+            "indicator_processing_decisions": flight_indicator_processing_decisions if flight_indicator_processing_decisions else "N/A",
+            "indicator_ground_threshold": flight_indicator_ground_threshold if flight_indicator_var_name else "N/A",
+            "num_mat_files_with_flight_window_found": num_files_with_flight_window if flight_indicator_var_name else "N/A"
         },
-        "variable_analysis_and_user_decisions": {
-            "initial_sample_analysis": var_analysis_results,
-            "user_processing_choices": user_decisions
+        "target_variable_processing": {
+            "name": target_variable_for_dataset,
+            "analysis_summary": target_var_analysis_results,
+            "user_decisions": user_decisions_for_target_var,
         },
-        "output_dataset_info": {
-            "output_directory": str(variable_specific_output_dir.relative_to(project_root) if hasattr(variable_specific_output_dir, "is_relative_to") and variable_specific_output_dir.is_relative_to(project_root) else str(variable_specific_output_dir.resolve())),
-            "gluonts_metadata_freq": final_dataset_frequency_for_gluonts,
-            "num_train_series_saved": len(train_data),
-            "num_test_series_saved": len(test_data)
+        "dataset_output": {
+            "final_output_directory": str(variable_specific_output_dir.resolve()),
+            "num_train_series": len(train_data),
+            "num_test_series": len(test_data),
+            "gluonts_frequency": final_gluonts_freq_for_target,
         },
-        "model_length_params_used_for_filtering": {
-             "context_length": model_context_length,
-             "prediction_length": model_prediction_length,
-             "min_len_factor_applied": min_len_factor,
-             "min_required_samples_per_series": min_required_length_for_series
+        "filtering_parameters": {
+            "model_context_length_for_min_len": model_context_length,
+            "model_prediction_length_for_min_len": model_prediction_length,
+            "min_len_factor": min_len_factor,
+            "min_required_samples_per_series": min_required_length_for_series,
         }
     }
-    config_save_path = variable_specific_output_dir / "data_processing_run_summary.json"
+    summary_save_path = variable_specific_output_dir / "data_processing_run_summary.json"
     try:
-        with open(config_save_path, 'w', encoding='utf-8') as f:
+        with open(summary_save_path, 'w', encoding='utf-8') as f:
             class CustomEncoder(json.JSONEncoder):
-                def default(self, obj):
-                    if isinstance(obj, Path): return str(obj)
-                    if isinstance(obj, (np.integer)): return int(obj)
-                    if isinstance(obj, (np.floating)): return float(obj)
-                    if isinstance(obj, (np.bool_)): return bool(obj)
-                    if isinstance(obj, np.ndarray): return obj.tolist()
-                    return super(CustomEncoder, self).default(obj)
-            json.dump(run_configuration_summary, f, indent=4, cls=CustomEncoder)
-        print(f"Run summary saved to: {config_save_path}")
-    except TypeError as te:
-        print(f"Could not serialize run summary to JSON: {te}. Saving as text.")
+                def default(self, o): # Changed 'obj' to 'o' to match superclass if any warning
+                    if isinstance(o, Path): return str(o)
+                    if isinstance(o, (np.integer, np.int64)): return int(o)
+                    if isinstance(o, (np.floating, np.float64)): return float(o)
+                    if isinstance(o, (np.bool_)): return bool(o)
+                    if isinstance(o, np.ndarray): return o.tolist()
+                    if isinstance(o, pd.Timestamp): return o.isoformat()
+                    if isinstance(o, pd.Period): return str(o) 
+                    if isinstance(o, Set): return list(o) 
+                    try:
+                        return super().default(o) # Call super().default(o)
+                    except TypeError:
+                        return f"<object of type {type(o).__name__} not serializable>"
+            json.dump(run_summary, f, indent=4, cls=CustomEncoder)
+        print(f"Run summary saved to: {summary_save_path}")
+    except Exception as e_json: 
+        print(f"Could not serialize run summary to JSON: {e_json}. Saving as text.")
         with open(variable_specific_output_dir / "data_processing_run_summary.txt", 'w', encoding='utf-8') as f:
-             f.write(str(run_configuration_summary))
+             f.write(str(run_summary))
 
     gluonts_metadata = {
-        "freq": final_dataset_frequency_for_gluonts,
-        "prediction_length": model_prediction_length
+        "freq": final_gluonts_freq_for_target,
+        "prediction_length": model_prediction_length 
     }
     with open(variable_specific_output_dir / "metadata.json", 'w', encoding='utf-8') as f:
         json.dump(gluonts_metadata, f, indent=4)
     print(f"GluonTS metadata.json saved in: {variable_specific_output_dir}")
 
-    print(f"\nInteractive data setup complete for '{target_variable}'.")
-    print(f"You can now use the directory '{str(variable_specific_output_dir.resolve())}' as the 'dataset' path in your TSDiff training config.") # Use resolved path
-    print(f"Ensure the 'freq' in TSDiff config matches: {final_dataset_frequency_for_gluonts}")
-    print(f"Ensure 'prediction_length' and 'context_length' in TSDiff config match: {model_prediction_length} and {model_context_length}")
+    print(f"\nInteractive data setup complete for '{target_variable_for_dataset}'.")
+    print(f"Output directory: {str(variable_specific_output_dir.resolve())}")
 
 if __name__ == "__main__":
     main_interactive_setup()
