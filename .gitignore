@@ -1,6 +1,6 @@
 # 忽略原始数据目录中的特定大文件目录
 
-data/raw_fdr_mat/
+/data/raw_fdr_mat/
 
 /checkpoints/
 
@@ -17,4 +17,6 @@ data/raw_fdr_mat/
 
 
 /*.txt
+
+/data
 
