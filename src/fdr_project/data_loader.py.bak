@@ -7,9 +7,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple, Set
 import warnings
 import calendar
-from scipy.ndimage import median_filter
-from itertools import groupby
-from operator import itemgetter
 
 # Suppress specific Pandas warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pandas.core.resample")
@@ -392,43 +389,35 @@ def get_series_from_mat(
 
 def determine_inflight_window_from_flight_indicator(
     flight_indicator_series: pd.Series, 
-    ground_threshold: float,
-    min_flight_points: int = 20,  # 最小连续点数，可根据采样率调整
-    median_filter_kernel: int = 7 # 中值滤波窗口
+    ground_threshold: float
 ) -> Optional[Tuple[pd.Timestamp, pd.Timestamp]]:
     """
-    用中值滤波和最小连续长度法判定 in-flight window，去除孤立尖峰。
+    Determines the in-flight window (start and end timestamps) from a flight indicator series.
+    Input series must have a DatetimeIndex.
     """
-    if flight_indicator_series.empty:
-        return None
-
+    if flight_indicator_series.empty: return None
+    
     numeric_values = pd.to_numeric(flight_indicator_series.values, errors='coerce')
-    # 1. 中值滤波去除尖峰
-    filtered = median_filter(numeric_values, size=median_filter_kernel)
-    # 2. 二值化
-    inflight_mask = filtered > ground_threshold
+    valid_value_mask = ~np.isnan(numeric_values)
 
-    indices = np.arange(len(inflight_mask))
-    inflight_indices = indices[inflight_mask]
-    if len(inflight_indices) == 0:
-        return None
+    if not valid_value_mask.any(): return None
 
-    # 3. 分组连续区间
-    groups = []
-    for k, g in groupby(enumerate(inflight_indices), lambda x: x[0] - x[1]):
-        group = list(map(itemgetter(1), g))
-        if len(group) >= min_flight_points:
-            groups.append(group)
+    # Consider only valid numeric values for threshold comparison
+    candidate_inflight_indices = np.where(numeric_values[valid_value_mask] > ground_threshold)[0]
+    
+    if len(candidate_inflight_indices) == 0: return None
+        
+    # Map these relative indices back to the original series' index positions using the mask
+    actual_series_indices = np.arange(len(flight_indicator_series))[valid_value_mask]
 
-    if not groups:
-        return None
+    flight_start_actual_idx = actual_series_indices[candidate_inflight_indices[0]]
+    flight_end_actual_idx = actual_series_indices[candidate_inflight_indices[-1]]
+    
+    if flight_end_actual_idx <= flight_start_actual_idx : return None
 
-    # 4. 取第一个和最后一个合格区间
-    flight_start_idx = groups[0][0]
-    flight_end_idx = groups[-1][-1]
-
-    flight_start_ts = flight_indicator_series.index[flight_start_idx]
-    flight_end_ts = flight_indicator_series.index[flight_end_idx]
+    flight_start_ts = flight_indicator_series.index[flight_start_actual_idx]
+    flight_end_ts = flight_indicator_series.index[flight_end_actual_idx]
+    
     return flight_start_ts, flight_end_ts
 
 def process_mat_file_with_decisions(
